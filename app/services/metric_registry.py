@@ -201,6 +201,23 @@ METRICS_REGISTRY = {
 
     "validator_unavailable_warning":     _d("validator_unavailable_warning", "diagnostic"),
     "validator_conflict_warning":        _d("validator_conflict_warning", "diagnostic"),
+
+    # ── Contextual Insight ──
+    "insights_is_list":                  _d("insights_is_list", "contextual_insight"),
+    "insight_count":                     _d("insight_count", "contextual_insight"),
+    "insight_count_in_range":            _d("insight_count_in_range", "contextual_insight"),
+    "references_to_context_is_list":     _d("references_to_context_is_list", "contextual_insight"),
+    "references_to_context_count":       _d("references_to_context_count", "contextual_insight"),
+    "follow_up_is_list":                 _d("follow_up_is_list", "contextual_insight"),
+    "follow_up_present":                 _d("follow_up_present", "contextual_insight"),
+    "depth_valid":                       _d("depth_valid", "contextual_insight"),
+    "must_include_coverage":             _d("must_include_coverage", "contextual_insight"),
+    "must_avoid_violation":             _d("must_avoid_violation", "contextual_insight"),
+
+    "insight_quality":                   _l("insight_quality", "contextual_insight"),
+    "domain_accuracy":                   _l("domain_accuracy", "contextual_insight"),
+    "contextual_coherence":              _l("contextual_coherence", "contextual_insight"),
+    "creativity_score":                  _l("creativity_score", "contextual_insight"),
 }
 
 

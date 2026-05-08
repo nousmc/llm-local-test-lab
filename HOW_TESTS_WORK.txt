@@ -97,6 +97,13 @@ quale prompt template viene usato e quali metriche vengono calcolate.
   10. SPEECH-TO-TEXT POSTPROCESS
       Il modello deve pulire una trascrizione grezza ed estrarre action items.
 
+  11. CONTEXTUAL INSIGHT
+      Il modello deve analizzare una conversazione multi-turno e produrre
+      insight strutturati dimostrando comprensione del dominio, creativita
+      pertinente e coerenza contestuale. I domini includono: legale,
+      commerciale, marketing, preparazione atletica, strategia aziendale,
+      comunicazione, STEM.
+
 
 4. ANATOMIA DI UN TEST CASE
 ----------------------------
@@ -184,6 +191,13 @@ La valutazione avviene in 4 fasi:
       - owner_null_or_string_valid, deadline_null_or_string_valid
       - filler_terms_remaining_count (word-boundary regex)
       - prompt_echo_exact_indicator_found
+
+    CONTEXTUAL INSIGHT:
+      - insights_is_list, insight_count, insight_count_in_range
+      - references_to_context_is_list, references_to_context_count
+      - follow_up_is_list, follow_up_present
+      - depth_valid (qualunque stringa non vuota)
+      - must_include_coverage, must_avoid_violation
 
   FASE 3 - VALIDAZIONE DEL GIUDICE
   Il validatore riceve input, expected, risposta, rubrica e VINCOLI
@@ -326,7 +340,8 @@ La valutazione avviene in 4 fasi:
   general, legal, academy, network_security, network_monitoring,
   medical, claims_management, customer_support, online_booking,
   system_administration, ecommerce, software_development,
-  document_processing, compliance, agent_development
+  document_processing, compliance, agent_development,
+  athletics, marketing, business_strategy, communication
 
 
 12. RIEPILOGO FINALE

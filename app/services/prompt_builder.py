@@ -169,6 +169,29 @@ Regole:
 Trascrizione grezza:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "clean_transcript": "trascrizione pulita", "action_items": [{ "owner": "nome o null", "task": "task da fare", "deadline": "data o null" }], "entities_mentioned": [{ "name": "nome entita", "type": "person|date|project|other" }] }',
+
+    "contextual_insight": ST_HEADER + """Analizza la conversazione multi-turno e produci un'analisi strutturata che dimostri comprensione del contesto, capacita di approfondimento e creativita pertinente al dominio.
+
+Scenario:
+{input_text}
+
+Contesto aggiuntivo:
+{context}
+
+Istruzioni: {instructions}
+
+Produci un'analisi con:
+- insights: lista di idee/strategie concrete (minimo 3, massimo 8)
+- references_to_context: riferimenti specifici ai turni della conversazione
+- follow_up_questions: domande di approfondimento pertinenti
+- depth: il dominio di riferimento della tua analisi
+
+Regole:
+- Ogni insight deve essere concreto e pertinente al dominio.
+- Non proporre idee generiche o ovvie.
+- Fai riferimento esplicito a turni specifici della conversazione.
+- Le domande di approfondimento devono essere rilevanti e non scontate.
+""" + MESSAGE_CONTAINER_TEMPLATE % '{ "insights": ["idea concreta 1", "idea concreta 2"], "references_to_context": ["riferimento al turno X"], "follow_up_questions": ["domanda di approfondimento"], "depth": "dominio_scelto" }',
 }
 
 

@@ -23,6 +23,7 @@ from .metrics import (
     compute_code_analysis_deterministic_metrics,
     compute_image_description_metrics,
     compute_speech_to_text_postprocess_metrics,
+    compute_contextual_insight_metrics,
 )
 
 from .prompt_builder import (
@@ -147,7 +148,7 @@ def _compute_final_score(
 
     # ---- Task-class detection ----
     STRUCTURED_PURE = {"classification", "data_extraction", "ocr_extraction"}
-    HYBRID = {"code_analysis", "code_documentation", "refactoring", "speech_to_text_postprocess"}
+    HYBRID = {"code_analysis", "code_documentation", "refactoring", "speech_to_text_postprocess", "contextual_insight"}
     SEMANTIC = {"rag_qa", "summarization", "image_description"}
 
     if test_type_id in STRUCTURED_PURE:
@@ -225,7 +226,7 @@ def _compute_final_score(
 
 
 STRUCTURED_TEST_TYPES = {"classification", "data_extraction", "ocr_extraction"}
-HYBRID_TEST_TYPES = {"code_analysis", "code_documentation", "refactoring", "speech_to_text_postprocess"}
+HYBRID_TEST_TYPES = {"code_analysis", "code_documentation", "refactoring", "speech_to_text_postprocess", "contextual_insight"}
 SEMANTIC_TEST_TYPES = {"rag_qa", "summarization", "image_description"}
 
 STRUCTURE_ONLY_TYPES = {"code_documentation", "code_analysis", "refactoring"}
@@ -319,6 +320,18 @@ def _compute_deterministic_score_for_type(test_type_id: str, metrics: list[dict]
         eco_penalty = 0.15 if prompt_echo > 0 else 0.0
         score = 0.15 * json_validity + 0.15 * schema + 0.25 * clean_present + 0.15 * action_schema + 0.15 * entity_schema + 0.15 * (1.0 - min(filler / 10, 1.0))
         return round(max(0.0, score - eco_penalty), 4)
+
+    if test_type_id == "contextual_insight":
+        json_validity = _metric_value(metrics, "json_validity")
+        schema = _metric_value(metrics, "schema_compliance", 1.0)
+        insight_range = _metric_value(metrics, "insight_count_in_range", 1.0)
+        must_cover = _metric_value(metrics, "must_include_coverage", 1.0)
+        must_avoid = _metric_value(metrics, "must_avoid_violation", 0.0)
+        refs = _metric_value(metrics, "references_to_context_count", 0.0)
+        fu = _metric_value(metrics, "follow_up_present", 0.0)
+        score = 0.15 * json_validity + 0.15 * schema + 0.15 * insight_range + 0.15 * must_cover + 0.10 * min(refs / 2, 1.0) + 0.10 * fu
+        penalty = must_avoid * 0.20
+        return round(max(0.0, score - min(0.25, penalty)), 4)
 
     if test_type_id == "summarization":
         max_words = _metric_value(metrics, "max_words_respected", 1.0)
@@ -642,6 +655,12 @@ async def _run_single_test(
                         for name, value in stt_result.items():
                             det_metrics_result.append({"name": name, "value": float(value)})
                         if stt_result.get("clean_transcript_present") != 1.0:
+                            determinant_is_perfect = False
+                    elif test_case.test_type_id == "contextual_insight":
+                        ci_result = compute_contextual_insight_metrics(test_case.expected_output_json, extracted_json)
+                        for name, value in ci_result.items():
+                            det_metrics_result.append({"name": name, "value": float(value)})
+                        if ci_result.get("insight_count_in_range") != 1.0 or ci_result.get("must_include_coverage", 1.0) < 0.5:
                             determinant_is_perfect = False
                     elif isinstance(expected, dict):
                         required_fields = expected.get("required_fields")

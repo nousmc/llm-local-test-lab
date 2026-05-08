@@ -144,6 +144,18 @@ Per i task RAG / Q&A documentale, segui queste linee guida INDEROGABILI:
 - Le citazioni servono a supportare i fatti, ma completeness dipende dai FATTI nella answer_text.
 - Se tutti i fatti richiesti sono presenti e supportati dal contesto, completeness=1.0 e semantic_score alto."""
 
+CONTEXTUAL_INSIGHT_EXTRA_FIELDS = """
+
+Per i task contextual_insight (brainstorming e conoscenza contestuale), segui queste linee guida INDEROGABILI:
+- Se il formato e corretto (insights lista 3-8 elementi, references_to_context presenti, follow_up_questions non vuoto, depth non vuoto), semantic_score DEVE essere >= 0.75 e completeness DEVE essere >= 0.75.
+- MAI assegnare score=0, semantic_score=0 o completeness=0 quando il formato e lo schema sono rispettati.
+- insight_quality (0.0-1.0): concretezza e originalita. Penalizza idee generiche ("fare un sito web", "migliorare la comunicazione") ma MAI sotto 0.5 se ci sono idee concrete.
+- domain_accuracy: correttezza terminologica e pertinenza al dominio dello scenario.
+- contextual_coherence: coerenza con i turni della conversazione. Riferimenti espliciti ai turni danno punteggio alto.
+- creativity_score: pertinenza creativa. Se le idee sono tutte ovvie, punteggio moderato (0.5-0.6), MAI 0.
+- Se must_avoid_themes sono specificati e non compaiono negli insight, NON penalizzare.
+- Se must_include_themes sono coperti, completeness deve essere >= 0.8."""
+
 
 def _map_alternative_keys(parsed: dict) -> dict:
     mapped = {}
@@ -386,6 +398,8 @@ async def validate_response(
         deterministic_hint += STT_EXTRA_FIELDS
     if "rag" in test_type.lower() or "qa" in test_type.lower():
         deterministic_hint += RAG_EXTRA_FIELDS
+    if "contextual_insight" in test_type.lower() or "brainstorming" in test_type.lower():
+        deterministic_hint += CONTEXTUAL_INSIGHT_EXTRA_FIELDS
 
     prompt += deterministic_hint
 

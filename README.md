@@ -157,6 +157,13 @@ Pulisce trascrizioni grezze ed estrae action items.
 - **LLM**: action_item_accuracy, entity_extraction_accuracy_semantic
 - **NOTA**: "Se formato e schema corretti, semantic_score >= 0.7. MAI score 0 se task eseguito."
 
+### 11. Contextual Insight (nuovo)
+Analizza conversazioni multi-turno producendo insight strutturati in domini specifici.
+- **Metriche deterministiche**: insights_is_list, insight_count_in_range, must_include_coverage, must_avoid_violation, references_to_context_count, depth_valid
+- **LLM**: insight_quality, domain_accuracy, contextual_coherence, creativity_score
+- **Domini separabili**: legal, commerciale, marketing, atletica, strategia, comunicazione, STEM
+- **NOTA**: Se formato corretto, semantic_score >= 0.75 e completeness >= 0.75. MAI score 0 con formato valido.
+
 ---
 
 ## Domini applicativi (Librerie)
@@ -178,6 +185,10 @@ Pulisce trascrizioni grezze ed estrae action items.
 | `document_processing` | Documenti | documents | class, extract, summ, ocr |
 | `compliance` | Compliance | compliance | class, extract, summ, rag |
 | `agent_development` | Agent Development | ai_agents | class, code_analysis, code_doc, summ, rag, data_extraction, refactoring |
+| `athletics` | Preparazione Atletica | athletics | contextual_insight |
+| `marketing` | Marketing | marketing | contextual_insight |
+| `business_strategy` | Strategia Aziendale | business_strategy | contextual_insight |
+| `communication` | Comunicazione | communication | contextual_insight |
 
 ---
 

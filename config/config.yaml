@@ -360,6 +360,9 @@ test_types:
   - id: "speech_to_text_postprocess"
     label: "Post-processing Speech-to-Text"
     expected_schema: "stt_expected"
+  - id: "contextual_insight"
+    label: "Brainstorming e Conoscenza Contestuale"
+    expected_schema: "insight_expected"
 
 thresholds:
   default_pass_score: 0.80

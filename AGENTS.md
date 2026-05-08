@@ -1,5 +1,7 @@
 # AGENTS.md — LLM Local Test Lab
 
+**CRITICAL: Never commit or push to GitHub unless explicitly asked by the user.**
+
 ## Run the app
 
 ```bash
@@ -57,6 +59,7 @@ To reset state: stop app, delete `data/app.db`, restart.
 | image_description | `0.20*jv + 0.40*required_fields_present + 0.40*max_words_respected` |
 | speech_to_text_postprocess | `0.15*jv + 0.15*sc + 0.25*clean_present + 0.15*action_schema + 0.15*entity_schema + 0.15*filler_quality - echo_penalty(0.15)` |
 | refactoring | `0.15*jv + 0.15*sc + 0.20*lexical_similarity` |
+| contextual_insight | `0.15*jv + 0.15*sc + 0.15*insight_range + 0.15*must_cover + 0.10*refs + 0.10*fu - must_avoid_penalty(0.20)` |
 
 ### `_compute_final_score()` protection rules
 
@@ -117,4 +120,4 @@ Codebase is in Italian (comments, UI, docstrings, labels). Test expectations and
 - `tests/__init__.py` is empty. Tests import from `app.services.*` using absolute paths.
 - Run with `pytest tests/ -v` from project root. Standalone: `python tests/test_*.py`.
 - Requires `APP_SECRET_KEY` in env.
-- 8 test files, ~134 tests covering: benchmark integrity, formula matching, prompt quality, seed library quality, validation scoring, validator robustness, metric classification, coherence regression, code analysis, image description.
+- 10 test files, ~141 tests covering: benchmark integrity, formula matching, prompt quality, seed library quality, validation scoring, validator robustness, metric classification, coherence regression, code analysis, image description, contextual insight.

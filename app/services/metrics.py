@@ -973,6 +973,73 @@ def compute_speech_to_text_postprocess_metrics(expected_json: str, actual_json: 
     return result
 
 
+ALLOWED_DEPTH_VALUES = {"tecnico", "commerciale", "legale", "comunicazione", "strategico"}
+
+
+def compute_contextual_insight_metrics(expected_json: str, actual_json: str) -> dict:
+    result = {
+        "insights_is_list": 0.0,
+        "insight_count": 0.0,
+        "insight_count_in_range": 0.0,
+        "references_to_context_is_list": 0.0,
+        "references_to_context_count": 0.0,
+        "follow_up_is_list": 0.0,
+        "follow_up_present": 0.0,
+        "depth_valid": 0.0,
+        "must_include_coverage": 0.0,
+        "must_avoid_violation": 0.0,
+    }
+    try:
+        expected = json.loads(expected_json) if expected_json else {}
+        actual = json.loads(actual_json)
+    except Exception:
+        return result
+
+    answer = actual.get("answer", actual) if isinstance(actual, dict) else {}
+    if not isinstance(answer, dict):
+        return result
+
+    insights = answer.get("insights") or []
+    if isinstance(insights, list):
+        result["insights_is_list"] = 1.0
+        non_empty = [s for s in insights if isinstance(s, str) and s.strip()]
+        result["insight_count"] = float(len(non_empty))
+        exp_min = expected.get("expected_insight_count", {}).get("min", 3) if isinstance(expected.get("expected_insight_count"), dict) else 3
+        exp_max = expected.get("expected_insight_count", {}).get("max", 8) if isinstance(expected.get("expected_insight_count"), dict) else 8
+        result["insight_count_in_range"] = 1.0 if exp_min <= len(non_empty) <= exp_max else 0.0
+
+    refs = answer.get("references_to_context") or []
+    if isinstance(refs, list):
+        result["references_to_context_is_list"] = 1.0
+        non_empty_refs = [r for r in refs if isinstance(r, str) and r.strip()]
+        result["references_to_context_count"] = float(len(non_empty_refs))
+
+    fu = answer.get("follow_up_questions") or []
+    if isinstance(fu, list):
+        result["follow_up_is_list"] = 1.0
+        non_empty_fu = [q for q in fu if isinstance(q, str) and q.strip()]
+        if non_empty_fu:
+            result["follow_up_present"] = 1.0
+
+    depth = str(answer.get("depth") or "").strip()
+    if depth:
+        result["depth_valid"] = 1.0
+
+    must_include = expected.get("must_include_themes") or []
+    if must_include:
+        text = " ".join(str(v) for v in answer.values()) if isinstance(answer, dict) else str(answer)
+        covered = sum(1 for theme in must_include if _contains_fuzzy(text, str(theme)))
+        result["must_include_coverage"] = round(covered / len(must_include), 4)
+
+    must_avoid = expected.get("must_avoid_themes") or []
+    if must_avoid:
+        text = " ".join(str(v) for v in answer.values()) if isinstance(answer, dict) else str(answer)
+        violations = sum(1 for theme in must_avoid if _contains_fuzzy(text, str(theme)))
+        result["must_avoid_violation"] = float(violations)
+
+    return result
+
+
 def check_prompt_contamination(prompt: str, expected_output_json: str | None, allowed_source_text: str = "") -> tuple[bool, str]:
     if not expected_output_json:
         return False, ""
@@ -989,7 +1056,7 @@ def check_prompt_contamination(prompt: str, expected_output_json: str | None, al
         exp_data = expected.get("expected", expected)
         if isinstance(exp_data, dict):
             for key, val in exp_data.items():
-                if key in {"style", "language", "format", "max_words", "target", "constraints", "tests_should_pass", "must_preserve_behavior"}:
+                if key in {"style", "language", "format", "max_words", "target", "constraints", "tests_should_pass", "must_preserve_behavior", "depth", "domain", "must_include_themes", "must_avoid_themes", "expected_insight_count", "quality_criteria"}:
                     continue
                 if key == "label" and _is_allowed_class_value(prompt, expected, val):
                     continue
