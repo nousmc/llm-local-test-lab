@@ -75,7 +75,7 @@ async def model_create(
     return RedirectResponse(url="/models", status_code=303)
 
 
-@router.get("/{model_id}/edit", response_class=HTMLResponse)
+@router.get("/{model_id:path}/edit", response_class=HTMLResponse)
 async def model_edit(model_id: str, request: Request, db: Session = Depends(get_db)):
     model = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
     if not model:
@@ -88,7 +88,7 @@ async def model_edit(model_id: str, request: Request, db: Session = Depends(get_
     )
 
 
-@router.post("/{model_id}/update")
+@router.post("/{model_id:path}/update")
 async def model_update(
     model_id: str,
     request: Request,
@@ -134,7 +134,7 @@ async def model_update(
     return RedirectResponse(url="/models", status_code=303)
 
 
-@router.post("/{model_id}/delete")
+@router.post("/{model_id:path}/delete")
 async def model_delete(model_id: str, db: Session = Depends(get_db)):
     model = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
     if model:
@@ -143,7 +143,7 @@ async def model_delete(model_id: str, db: Session = Depends(get_db)):
     return RedirectResponse(url="/models", status_code=303)
 
 
-@router.post("/{model_id}/enable")
+@router.post("/{model_id:path}/enable")
 async def model_enable(model_id: str, db: Session = Depends(get_db)):
     model = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
     if model:
@@ -152,7 +152,7 @@ async def model_enable(model_id: str, db: Session = Depends(get_db)):
     return RedirectResponse(url="/models", status_code=303)
 
 
-@router.post("/{model_id}/disable")
+@router.post("/{model_id:path}/disable")
 async def model_disable(model_id: str, db: Session = Depends(get_db)):
     model = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
     if model:
@@ -161,7 +161,7 @@ async def model_disable(model_id: str, db: Session = Depends(get_db)):
     return RedirectResponse(url="/models", status_code=303)
 
 
-@router.post("/{model_id}/probe")
+@router.post("/{model_id:path}/probe")
 async def model_probe(model_id: str, db: Session = Depends(get_db)):
     model = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
     if not model:
