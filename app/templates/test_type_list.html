@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Tipologie Test{% endblock %}
+{% block content %}
+<h1>Tipologie Test</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Label</th>
+            <th>Schema Atteso</th>
+            <th>Abilitato</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for tt in test_types %}
+        <tr>
+            <td>{{ tt.id | e }}</td>
+            <td>{{ tt.label | e }}</td>
+            <td>{{ tt.expected_schema | e }}</td>
+            <td>{{ 'Si' if tt.enabled else 'No' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">Nessuna tipologia configurata.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

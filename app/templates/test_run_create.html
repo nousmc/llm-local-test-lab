@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Esecuzioni{% endblock %}
+{% block content %}
+<h1>Test Run</h1>
+
+{% if mode == 'list' %}
+<div style="margin-bottom:15px">
+    <a href="/test-runs/new" class="btn">Nuova Run</a>
+</div>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Stato</th>
+            <th>Avviata</th>
+            <th>Completata</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in runs %}
+        <tr>
+            <td>{{ run.id }}</td>
+            <td>{{ run.name | e }}</td>
+            <td><span class="status-{{ run.status }}">{{ run.status | e }}</span></td>
+            <td>{{ run.started_at if run.started_at else '-' }}</td>
+            <td>{{ run.completed_at if run.completed_at else '-' }}</td>
+            <td><a href="/test-runs/{{ run.id }}">Dettagli</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">Nessuna esecuzione</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% elif mode == 'create' %}
+
+<form method="post" action="/test-runs/" class="form">
+    <div class="form-group">
+        <label>Nome run *</label>
+        <input type="text" name="name" required>
+    </div>
+    <div class="form-group">
+        <label>Descrizione</label>
+        <textarea name="description" rows="3"></textarea>
+    </div>
+
+    <div class="form-group">
+        <label>Modelli da testare</label>
+        <div class="checkbox-grid">
+            {% for m in models %}
+            <label class="checkbox-label">
+                <input type="checkbox" name="model_ids" value="{{ m.id | e }}">
+                {{ m.label | e }} ({{ m.provider | e }})
+            </label>
+            {% else %}
+            <p>Nessun modello abilitato.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <label style="margin:0">Test case ({{ total_test_cases }} totali)</label>
+            <div>
+                <button type="button" class="btn btn-small" onclick="toggleAllLibs(true)">Seleziona tutto</button>
+                <button type="button" class="btn btn-small" onclick="toggleAllLibs(false)">Deseleziona tutto</button>
+            </div>
+        </div>
+
+        {% for lib_id, lib_data in lib_groups.items() %}
+        <div class="lib-panel">
+            <div class="lib-panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                <span class="lib-toggle">&#9660;</span>
+                <input type="checkbox" class="lib-master-check" onchange="toggleLibrary('{{ lib_id }}', this.checked)" title="Seleziona tutto {{ lib_data.label }}">
+                <strong>{{ lib_data.label | e }}</strong>
+                <span class="lib-count">{{ lib_data.cases | length }} test</span>
+                <span class="lib-types">({% for tc in lib_data.cases %}{% if loop.first or tc.test_type_id != loop.previtem.test_type_id %}{{ tc.test_type_id | e }}{% if not loop.last and tc.test_type_id != lib_data.cases[loop.index0+1].test_type_id %}, {% endif %}{% endif %}{% endfor %})</span>
+            </div>
+            <div class="lib-panel-body">
+                {% for tc in lib_data.cases %}
+                <label class="checkbox-label lib-check-{{ lib_id }}">
+                    <input type="checkbox" name="test_case_ids" value="{{ tc.id }}" class="lib-check-{{ lib_id }}">
+                    [{{ tc.test_type_id | e }}] {{ tc.title | e }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p>Nessun test case.</p>
+        {% endfor %}
+    </div>
+
+    <button type="submit" class="btn">Crea Run</button>
+</form>
+
+<script>
+function toggleLibrary(libId, checked) {
+    var checks = document.querySelectorAll('.lib-check-' + libId);
+    checks.forEach(function(cb) { cb.checked = checked; });
+}
+function toggleAllLibs(checked) {
+    document.querySelectorAll('.lib-panel input[type=checkbox][name=test_case_ids]').forEach(function(cb) { cb.checked = checked; });
+    document.querySelectorAll('.lib-master-check').forEach(function(mc) { mc.checked = checked; });
+}
+</script>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,11 @@
+secrets/secret.key
+secrets/openrouter.txt
+secrets/*.Identifier
+data/app.db
+data/reports/*
+data/exports/*
+app/uploads/*
+.env
+__pycache__/
+*.pyc
+README.pdf

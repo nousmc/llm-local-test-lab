@@ -1,0 +1,367 @@
+app:
+  name: "LLM Local Test Lab"
+  host: "0.0.0.0"
+  port: 7357
+  debug: true
+  database_url: "sqlite:///data/app.db"
+
+paths:
+  uploads_dir: "app/uploads"
+  reports_dir: "data/reports"
+  exports_dir: "data/exports"
+  secrets_file: "secrets/secret.key"
+
+providers:
+  ollama:
+    enabled: true
+    base_url: "http://172.23.144.1:11434/v1"
+    timeout_seconds: 300
+  openrouter:
+    enabled: true
+    base_url: "https://openrouter.ai/api/v1"
+    timeout_seconds: 300
+    app_name: "LLM Local Test Lab"
+    site_url: "http://localhost:7357"
+
+models:
+  - id: "devstral-small-2-24b"
+    label: "Devstral Small 2 24B ctx128k"
+    provider: "ollama"
+    model: "devstral-small-2-24B:ctx128k"
+    enabled: true
+    family: "devstral"
+    size_b: 24
+    context_window: 131072
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "devstral-small-2"
+    label: "Devstral Small 2"
+    provider: "ollama"
+    model: "devstral-small-2:latest"
+    enabled: true
+    family: "devstral"
+    size_b: 24
+    context_window: 131072
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "deepseek-v2-ctx64k"
+    label: "DeepSeek V2 ctx64k"
+    provider: "ollama"
+    model: "deepseek-v2:ctx64k"
+    enabled: true
+    family: "deepseek"
+    size_b: 236
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "ministral3-14b-ctx64"
+    label: "Ministral 3 14B ctx64"
+    provider: "ollama"
+    model: "ministral3:14b-ctx64"
+    enabled: true
+    family: "mistral"
+    size_b: 14
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "phi4-14b-ctx64"
+    label: "Phi-4 14B ctx64"
+    provider: "ollama"
+    model: "phi4:14b-ctx64"
+    enabled: true
+    family: "phi"
+    size_b: 14
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "qwen3.6-27b"
+    label: "Qwen 3.6 27B ctx64k"
+    provider: "ollama"
+    model: "qwen3.6-27b:ctx64k"
+    enabled: true
+    family: "qwen"
+    size_b: 27
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "qwen-coder-next-64k"
+    label: "Qwen Coder Next 64k"
+    provider: "ollama"
+    model: "qwen-coder-next:64k"
+    enabled: true
+    family: "qwen"
+    size_b: 33
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "qwen3-coder-next"
+    label: "Qwen 3 Coder Next"
+    provider: "ollama"
+    model: "qwen3-coder-next:latest"
+    enabled: true
+    family: "qwen"
+    size_b: 33
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "qwen3-coder-64k-tuned"
+    label: "Qwen 3 Coder 64k Tuned"
+    provider: "ollama"
+    model: "qwen3-coder:64k-tuned"
+    enabled: true
+    family: "qwen"
+    size_b: 33
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "qwen3-coder-30b"
+    label: "Qwen 3 Coder 30B"
+    provider: "ollama"
+    model: "qwen3-coder:30b"
+    enabled: true
+    family: "qwen"
+    size_b: 30
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "qwen3.6-27b-latest"
+    label: "Qwen 3.6 27B"
+    provider: "ollama"
+    model: "qwen3.6:27b"
+    enabled: true
+    family: "qwen"
+    size_b: 27
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "gemma4-e4b"
+    label: "Gemma 4 e4B"
+    provider: "ollama"
+    model: "gemma4:e4b"
+    enabled: true
+    family: "gemma"
+    size_b: 4
+    context_window: 32768
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 2048
+
+  - id: "mistral-7b"
+    label: "Mistral 7B"
+    provider: "ollama"
+    model: "mistral:7b"
+    enabled: true
+    family: "mistral"
+    size_b: 7
+    context_window: 32768
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 2048
+
+  - id: "qwen3.5-9b"
+    label: "Qwen 3.5 9B"
+    provider: "ollama"
+    model: "qwen3.5:9b"
+    enabled: true
+    family: "qwen"
+    size_b: 9
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "gemma4-26b"
+    label: "Gemma 4 26B"
+    provider: "ollama"
+    model: "gemma4:26b"
+    enabled: true
+    family: "gemma"
+    size_b: 26
+    context_window: 65536
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 4096
+
+  - id: "llamantino-8b-ita"
+    label: "LLaMAntino 3 ANITA 8B ITA Q8"
+    provider: "ollama"
+    model: "LLaMAntino-3-ANITA-8B-Inst-DPO-ITA.Q8_0.gguf"
+    enabled: true
+    family: "llama"
+    size_b: 8
+    context_window: 32768
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 2048
+
+  - id: "minerva-7b"
+    label: "Minerva 7B Instruct Q8"
+    provider: "ollama"
+    model: "minerva-7b-instruct-v1.0-q8_0.gguf"
+    enabled: true
+    family: "minerva"
+    size_b: 7
+    context_window: 32768
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 2048
+
+  - id: "fastweb-miia-7b"
+    label: "Fastweb MIIA 7B Q8"
+    provider: "ollama"
+    model: "FastwebMIIA-7B-Q8_0.gguf"
+    enabled: true
+    family: "custom"
+    size_b: 7
+    context_window: 32768
+    supports_vision: false
+    supports_json: true
+    default_params:
+      temperature: 0.0
+      top_p: 0.9
+      max_tokens: 2048
+
+validator:
+  enabled: true
+  provider: "openrouter"
+  model: "deepseek/deepseek-v4-pro"
+  fallback_provider: "openrouter"
+  fallback_model: "deepseek/deepseek-v4-flash"
+  validation_mode: "rubric_json"
+  temperature: 0.0
+  max_tokens: 4096
+
+execution:
+  parallelism: 4
+  retry_attempts: 2
+  retry_backoff_seconds: 3
+  save_raw_responses: true
+  save_prompts: true
+  stop_on_provider_error: false
+
+metrics:
+  enabled:
+    - exact_match
+    - json_validity
+    - schema_compliance
+    - field_accuracy
+    - semantic_similarity
+    - validator_score
+    - latency_ms
+    - tokens_per_second
+    - prompt_tokens
+    - completion_tokens
+    - total_tokens
+    - estimated_cost
+    - hallucination_flag
+    - refusal_flag
+
+test_types:
+  - id: "classification"
+    label: "Classificazione"
+    expected_schema: "classification_expected"
+  - id: "data_extraction"
+    label: "Estrazione dati"
+    expected_schema: "json_expected"
+  - id: "rag_qa"
+    label: "RAG / Q&A documentale"
+    expected_schema: "rag_expected"
+  - id: "summarization"
+    label: "Sintesi"
+    expected_schema: "summary_expected"
+  - id: "code_analysis"
+    label: "Analisi codice"
+    expected_schema: "code_expected"
+  - id: "code_documentation"
+    label: "Documentazione codice"
+    expected_schema: "code_doc_expected"
+  - id: "refactoring"
+    label: "Refactoring"
+    expected_schema: "refactoring_expected"
+  - id: "image_description"
+    label: "Descrizione immagine"
+    expected_schema: "vision_expected"
+  - id: "ocr_extraction"
+    label: "OCR / estrazione testo da immagine"
+    expected_schema: "ocr_expected"
+  - id: "speech_to_text_postprocess"
+    label: "Post-processing Speech-to-Text"
+    expected_schema: "stt_expected"
+
+thresholds:
+  default_pass_score: 0.80
+  json_validity_required: true
+  max_latency_ms_warning: 60000

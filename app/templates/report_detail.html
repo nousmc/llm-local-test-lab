@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Report{% endblock %}
+{% block content %}
+<h1>Report</h1>
+
+{% if mode == 'list' %}
+<h2>Report generati</h2>
+{% if reports %}
+<table>
+    <thead>
+        <tr><th>Run ID</th><th>Titolo</th><th>Data</th><th>Azioni</th></tr>
+    </thead>
+    <tbody>
+        {% for item in reports %}
+        <tr>
+            <td>{{ item.run.id if item.run else item.report.test_run_id }}</td>
+            <td>{{ item.report.title | e if item.report.title else item.run.name | e }}</td>
+            <td>{{ item.report.created_at }}</td>
+            <td>
+                <a href="/reports/{{ item.report.test_run_id }}">Vedi</a> |
+                <a href="/reports/{{ item.report.test_run_id }}/export/html">HTML</a> |
+                <a href="/reports/{{ item.report.test_run_id }}/export/json">JSON</a> |
+                <a href="/reports/{{ item.report.test_run_id }}/export/csv">CSV</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Nessun report generato.</p>
+{% endif %}
+
+<h2>Run senza report</h2>
+{% if runs_without_reports %}
+<table>
+    <thead>
+        <tr><th>ID</th><th>Nome</th><th>Stato</th><th>Azioni</th></tr>
+    </thead>
+    <tbody>
+        {% for run in runs_without_reports %}
+        <tr>
+            <td>{{ run.id }}</td>
+            <td>{{ run.name | e }}</td>
+            <td>{{ run.status | e }}</td>
+            <td>
+                <form method="post" action="/reports/{{ run.id }}/generate" style="display:inline">
+                    <button type="submit" class="btn-small">Genera Report</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Tutte le run completate hanno report.</p>
+{% endif %}
+
+{% elif mode == 'missing' %}
+<div class="warning">
+    <p>Nessun report per la run {{ run.id if run else '' }}.</p>
+    {% if run %}
+    <form method="post" action="/reports/{{ run.id }}/generate" style="display:inline">
+        <button type="submit" class="btn">Genera Report</button>
+    </form>
+    {% endif %}
+    <a href="/reports" class="btn">Torna alla lista</a>
+</div>
+
+{% elif mode == 'detail' %}
+<h2>{{ report.title | e }}</h2>
+
+{% if run and run.executive_report_text %}
+<div class="config-section" style="margin-bottom:20px">
+    <h2>Executive Report</h2>
+    <div style="white-space:pre-wrap;font-size:14px;line-height:1.6">{{ run.executive_report_text | e }}</div>
+    <p style="font-size:11px;color:#888;margin-top:8px">Generato automaticamente dal validatore analizzando i risultati.</p>
+</div>
+{% endif %}
+
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Score medio per modello</h3>
+        <canvas id="chart-r-score"></canvas>
+        <p class="chart-desc">Confronto del final_score medio. Il modello col valore piu alto ha ottenuto i risultati migliori.</p>
+    </div>
+    <div class="chart-container">
+        <h3>Pass rate per modello</h3>
+        <canvas id="chart-r-pass"></canvas>
+        <p class="chart-desc">Percentuale di test superati (score >= 0.80). Piu alta e la percentuale, piu affidabile e il modello.</p>
+    </div>
+</div>
+
+<h3>Risultati aggregati</h3>
+<table>
+    <tr><th>Totale test</th><td>{{ findings.total }}</td></tr>
+    <tr><th>Completati</th><td>{{ findings.completed }}</td></tr>
+    <tr><th>Falliti</th><td>{{ findings.failed }}</td></tr>
+    <tr><th>Passati</th><td>{{ findings.passed_count }}</td></tr>
+    <tr><th>Score medio</th><td>{{ findings.avg_score }}</td></tr>
+    <tr><th>Pass rate</th><td>{{ findings.pass_rate }}%</td></tr>
+    <tr><th>Error rate</th><td>{{ findings.error_rate }}%</td></tr>
+    <tr><th>Latenza media</th><td>{{ findings.avg_latency }} ms</td></tr>
+    <tr><th>Miglior modello</th><td>{{ findings.best_model | e }}</td></tr>
+</table>
+
+<h3>Per modello</h3>
+<table>
+    <thead><tr><th>Modello</th><th>Avg Score</th><th>Pass Rate</th><th>Test</th></tr></thead>
+    <tbody>
+        {% for mid, mdata in findings.model_stats.items() %}
+        <tr>
+            <td>{{ mdata.label | e }}</td>
+            <td>{{ mdata.avg_score }}</td>
+            <td>{{ mdata.pass_rate }}%</td>
+            <td>{{ mdata.total }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h3>Errori per tipo</h3>
+<table>
+    <thead><tr><th>Tipo errore</th><th>Conteggio</th></tr></thead>
+    <tbody>
+        {% for etype, count in findings.errors_by_type.items() %}
+        <tr><td>{{ etype | e }}</td><td>{{ count }}</td></tr>
+        {% endfor %}
+        {% if not findings.errors_by_type %}
+        <tr><td colspan="2">Nessun errore</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+
+{% if findings.failures %}
+<h3>Fallimenti</h3>
+<table>
+    <thead><tr><th>Test Case</th><th>Modello</th><th>Errore</th></tr></thead>
+    <tbody>
+        {% for f in findings.failures %}
+        <tr><td>{{ f.test_case_id }}</td><td>{{ f.model_id | e }}</td><td>{{ f.error or '-' | e }}</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<div style="margin:15px 0">
+    <a href="/reports/{{ report.test_run_id }}/export/html" class="btn">Esporta HTML</a>
+    <a href="/reports/{{ report.test_run_id }}/export/json" class="btn">Esporta JSON</a>
+    <a href="/reports/{{ report.test_run_id }}/export/csv" class="btn">Esporta CSV</a>
+</div>
+
+<script>
+try {
+    var charts = JSON.parse('{{ charts | safe }}');
+    if (charts.model_scores && charts.model_scores.labels.length > 0) {
+        makeBarChart('chart-r-score', charts.model_scores.labels, charts.model_scores.data, 'Score', 'rgba(34,139,34,0.7)');
+    }
+    if (charts.model_scores && charts.model_scores.pass_rates && charts.model_scores.pass_rates.length > 0) {
+        makeBarChart('chart-r-pass', charts.model_scores.labels, charts.model_scores.pass_rates, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    }
+} catch(e) {}
+</script>
+
+{% endif %}
+{% endblock %}

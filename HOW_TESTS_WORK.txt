@@ -1,0 +1,354 @@
+LLM LOCAL TEST LAB - COME FUNZIONA IL TEST
+============================================
+
+Questo documento descrive in dettaglio il funzionamento del sistema di benchmark
+per modelli LLM. E' scritto per essere comprensibile anche a chi non conosce il
+codice, ma contiene tutti i dettagli tecnici rilevanti.
+
+
+1. CONCETTI FONDAMENTALI
+------------------------
+
+Il sistema testa modelli linguistici (LLM) misurando la loro capacita' di
+completare task specifici. Ogni test e' uno "scenario" in cui:
+
+  - Un MODELLO riceve un prompt (istruzioni + dati da elaborare)
+  - Il modello produce una RISPOSTA
+  - La risposta viene VALUTATA automaticamente
+
+La valutazione avviene su TRE livelli:
+
+  1. METRICHE DETERMINISTICHE: controlli automatici e oggettivi
+     (JSON valido? Schema rispettato? Campi presenti? Tipi corretti?
+      Conteggio parole? Liste/non liste? Citazioni vuote/non vuote?)
+  2. METRICHE EURISTICHE: segnali generici e diagnostici
+     (lexical_similarity, token_overlap, prompt_echo_detected)
+     Le euristiche NON sono decisive per il pass/fail.
+  3. VALIDAZIONE DEL GIUDICE (LLM): un secondo modello LLM valuta
+     la qualita' semantica della risposta (semantic_score,
+     completeness, hallucination_detected, factual_consistency, ...)
+
+Tutte le metriche hanno un "evaluation_mode" nel registry:
+  - deterministic: oggettivamente computabile, decisiva per scoring
+  - heuristic: segnale generico, non decisivo, prefisso "heuristic_"
+  - llm: prodotta dal validatore, decisiva per task semantici/ibridi
+
+
+2. GERARCHIA DEI TEST
+---------------------
+
+Il sistema organizza i test in una gerarchia a tre livelli:
+
+  LIBRERIA (dominio applicativo)
+    |
+    +-- TEST CASE (scenario specifico)
+          |
+          +-- TIPOLOGIA TECNICA (capacita' testata)
+
+  ESEMPI:
+    Libreria "legal"
+      +-- Test case "Classificazione clausola" (tipologia: classification)
+      +-- Test case "Estrazione dati contratto" (tipologia: data_extraction)
+      +-- Test case "Sintesi clausola" (tipologia: summarization)
+
+    Libreria "network_security"
+      +-- Test case "Classificazione alert" (tipologia: classification)
+      +-- Test case "Analisi log SQL injection" (tipologia: code_analysis)
+
+
+3. LE 10 TIPOLOGIE TECNICHE
+----------------------------
+
+Ogni test case appartiene a UNA di queste tipologie. La tipologia determina
+quale prompt template viene usato e quali metriche vengono calcolate.
+
+  1. CLASSIFICATION
+     Il modello deve assegnare un'etichetta scelta da una lista predefinita.
+
+  2. DATA EXTRACTION
+     Il modello deve estrarre dati strutturati da un testo libero.
+
+  3. RAG / Q&A DOCUMENTALE
+     Il modello deve rispondere a una domanda basandosi ESCLUSIVAMENTE su un
+     contesto fornito. Se l'informazione non e' nel contesto, deve dichiararlo
+     con answer_absent=true. Se il contesto dice "non sono riportate diagnosi",
+     NON e' assenza: e' una risposta negativa (answer_absent=false).
+
+  4. SUMMARIZATION
+     Il modello deve riassumere un testo rispettando formato e lunghezza.
+
+  5. CODE ANALYSIS
+     Il modello deve analizzare codice e identificare bug, vulnerabilita',
+     problemi di performance o best practice mancanti.
+     Tipi finding ammessi: bug, security, best_practice, performance.
+
+  6. CODE DOCUMENTATION
+     Il modello deve scrivere la documentazione di una funzione.
+
+  7. REFACTORING
+     Il modello deve riscrivere codice preservandone il comportamento.
+
+  8. IMAGE DESCRIPTION
+     Il modello deve descrivere oggettivamente una scena visiva.
+
+  9. OCR EXTRACTION
+     Il modello deve estrarre dati strutturati da output OCR.
+
+  10. SPEECH-TO-TEXT POSTPROCESS
+      Il modello deve pulire una trascrizione grezza ed estrarre action items.
+
+
+4. ANATOMIA DI UN TEST CASE
+----------------------------
+
+Ogni test case contiene:
+
+  A) DATI VISIBILI AL MODELLO (entrano nel prompt):
+     - input_text: il testo da analizzare/classificare/estrarre
+     - context_text: contesto aggiuntivo
+     - description: istruzioni operative per il task
+     - user_prompt_template: template del prompt con placeholder
+
+  B) DATI INVISIBILI AL MODELLO (usati solo per la valutazione):
+     - expected_output_json: risposta attesa in JSON strutturato
+     - expected_text: risposta attesa in formato testo libero
+     - rubric_json: criteri di valutazione per il giudice
+
+  C) METADATI:
+     - library_id, test_type_id, difficulty, risk_level, tags
+
+
+5. COME VIENE COSTRUITO IL PROMPT
+-----------------------------------
+
+Il prompt NON contiene mai i valori attesi. Ogni tipologia ha un template
+specifico con struttura esplicita. C'e' un controllo automatico pre-invio:
+se il prompt contiene valori attesi, il test viene bloccato come "invalid_prompt".
+
+
+6. COME VIENE VALUTATA LA RISPOSTA
+------------------------------------
+
+La valutazione avviene in 4 fasi:
+
+  FASE 1 - ESTRAZIONE JSON
+  La risposta viene analizzata per estrarre un JSON valido, anche dentro
+  code fence markdown.
+
+  FASE 2 - METRICHE DETERMINISTICHE (per tipologia)
+
+    CLASSIFICATION / DATA EXTRACTION / OCR:
+      - json_validity, schema_compliance
+      - field_accuracy, missing_fields_count
+      - extra_fields_count (alias legacy: hallucinated_fields_count)
+      - incorrect_fields_count
+
+    RAG / Q&A:
+      - answer_absent_flag_match: expected.answer_absent == actual.answer.answer_absent
+      - answer_absent_textual_absence_detected: detection testuale (diagnostica)
+      - answer_absent_correctness: segue answer_absent_flag_match (decisiva)
+      - citation_presence, citation_exact_substring_match (normalizzata, no fuzzy)
+      - citations_empty_count, citations_nonempty_count
+      - top_level_citations_present (1.0 solo se non vuoto)
+      - answer_text_empty_when_absent, answer_text_present_when_not_absent
+
+    SUMMARIZATION:
+      - max_words_respected, summary_word_count
+      - summary_is_bulleted, key_points_is_list, key_points_count
+      - task_format_compliance_deterministic
+
+    CODE ANALYSIS:
+      - json_validity, schema_compliance
+      - findings_schema_valid, allowed_type_valid, allowed_severity_valid
+      - finding_required_keys_present
+      - heuristic_language_compliance (non decisiva)
+      NOTA: field_accuracy NON e' usata per code_analysis.
+
+    CODE DOCUMENTATION:
+      - documentation_structure, missing_doc_sections_count
+      - documented_parameters_accuracy, hallucinated_parameters_count
+      - missing_documented_parameters_count
+      - examples_schema_violation, hallucinated_exception_count
+      - heuristic_documentation_completeness (legacy: documentation_completeness)
+      - style_compliance (alias: heuristic_style_compliance)
+
+    IMAGE DESCRIPTION:
+      - required_fields_present, description_word_count
+      - max_words_respected, objects_detected_is_list
+      - dominant_colors_is_list, scene_type_present
+
+    SPEECH-TO-TEXT POSTPROCESS:
+      - clean_transcript_present
+      - action_items_is_list, action_items_schema_valid
+      - entities_mentioned_is_list, entities_schema_valid
+      - owner_null_or_string_valid, deadline_null_or_string_valid
+      - filler_terms_remaining_count (word-boundary regex)
+      - prompt_echo_exact_indicator_found
+
+  FASE 3 - VALIDAZIONE DEL GIUDICE
+  Il validatore riceve input, expected, risposta, rubrica e VINCOLI
+  DETERMINISTICI pre-calcolati (json_validity, schema_compliance).
+  Il prompt include istruzioni specifiche per tipo test (code_analysis,
+  STT, RAG). Il validatore ha 2 tentativi con fallback model.
+
+  Output JSON del validatore:
+    score, passed, format_score, semantic_score, completeness_score,
+    safety_score, hallucination_detected, refusal_detected,
+    reasoning, + campi specifici per tipo (finding_accuracy,
+    invented_bug_count, ...)
+
+  Se il validatore fallisce:
+    - validator_status != "ok"
+    - metriche llm NON valorizzate (non 0 fittizio)
+    - final_score_mode = "validator_fallback"
+    - needs_review = true
+    - validator_unavailable_warning registrato
+
+  FASE 4 - CALCOLO SCORE FINALE
+
+  Lo score deterministico ha una formula specifica per ogni tipologia.
+  Il final_score combina deterministico + validatore con pesi:
+    - Task strutturati puri: det=0.50, val=0.25, fmt=0.10
+    - Task ibridi: det=0.35, val=0.40, fmt=0.10
+    - Task semantici: det=0.30, val=0.45, fmt=0.10
+    + latenza 0.05, stabilita' 0.05, costo 0.05
+
+  Tre campi pass indipendenti:
+    - deterministic_passed: deterministic_score >= pass_threshold
+    - validator_passed: dal validatore (forzato false se JSON/schema invalido)
+    - final_passed: final_score >= pass_threshold
+
+  final_score_mode:
+    - "normal": validatore OK
+    - "validator_conflict_adjusted": validatore in conflitto col deterministico
+    - "validator_fallback": validatore non disponibile
+
+  REGOLE DI PROTEZIONE:
+    - Se deterministico = 1.0 e validatore >= 0.90: final_score = 1.0
+    - Se deterministico perfetto ma validatore in disaccordo, floor varia:
+      0.90 (task strutturati), 0.85 (task ibridi), 0.75 (task semantici)
+    - Cap per errori gravi: JSON invalido 0.30, schema violato 0.50, refusal 0.10
+    - Hard gate: json_validity=0 o schema_compliance=0 forza validator_passed=false
+    - needs_review=true per task semantici/ibridi con validator_conflict
+
+
+7. IL CICLO DI VITA DI UNA RUN
+-------------------------------
+
+  1. CREAZIONE: L'utente seleziona modelli, librerie, test case
+  2. AVVIO: Validazione selezione, stato "running", task asincrono
+  3. ESECUZIONE: Per ogni coppia (modello, test_case):
+     a. Genera prompt e verifica contaminazione
+     b. Invia al provider (Ollama o OpenRouter)
+     c. Estrae JSON e calcola metriche deterministiche
+     d. Invia al validatore con vincoli deterministici
+     e. Calcola final_score e campi pass
+     f. Salva tutto nel database
+     Parallelismo: asyncio.Semaphore (default 4). Retry: 2 tentativi.
+  4. COMPLETAMENTO: Executive report via validatore, grafici calcolati
+  5. ANALISI: Dashboard, dettaglio run, report, export CSV/JSON
+
+
+8. I GRAFICI E IL LORO SIGNIFICATO
+-----------------------------------
+
+  DASHBOARD:
+    - Score medio per modello
+    - Pass rate per modello (% test con score >= 0.80)
+    - Latenza media per modello
+    - Valid JSON rate per modello
+
+  DETTAGLIO RUN:
+    - Score medio per modello, per tipologia, per dominio
+    - Confronto tra modelli per tipologia e per dominio
+    - Tabella risultati con score, latenza, errori
+    - Executive report narrativo
+    - Validator status e final_score_mode per ogni risultato
+
+  REPORT:
+    - Score medio e pass rate per libreria
+    - Errori per tipo e per libreria
+    - Classifica modelli
+    - Export HTML, JSON, CSV
+
+
+9. CONTROLLI DI QUALITA' E SICUREZZA
+--------------------------------------
+
+  PROTEZIONE DALLA CONTAMINAZIONE:
+    Controllo automatico pre-invio. Se il prompt contiene valori attesi,
+    test bloccato come "invalid_prompt".
+
+  SEPARAZIONE DATI:
+    Dati visibili al modello (input, contesto, classi ammesse) separati
+    dai dati di valutazione (expected output, rubrica).
+
+  PROTEZIONE DAL VALIDATORE:
+    Se metriche deterministiche perfette ma validatore da' punteggio basso:
+    - validator_conflict_warning
+    - floor dipendente dalla classe del task
+    - needs_review per task semantici/ibridi
+    Questo evita che un giudice "distratto" penalizzi risposte corrette.
+
+  ISOLAMENTO METRICHE PER TIPOLOGIA:
+    Ogni test_type ha il suo calcolatore dedicato. Metriche di una
+    tipologia non vengono MAI applicate a un'altra.
+
+
+10. ESEMPIO COMPLETO: TEST DI CLASSIFICAZIONE
+----------------------------------------------
+
+  TEST CASE:
+    Libreria: customer_support
+    Tipologia: classification
+    Input: "Ordinato XYZ-9000 express 24h, tracking fermo"
+    Expected: {"label": "problema_spedizione"}
+
+  RISPOSTA CORRETTA:
+    {"answer": {"label": "problema_spedizione"}, "confidence": 0.95}
+    Metriche: json_validity=1.0, field_accuracy=1.0 → deterministic_score=1.0
+    Validatore: score=1.0, semantic_score=1.0
+    → final_score=1.0, deterministic_passed=true, final_passed=true
+
+  RISPOSTA ERRATA:
+    {"answer": {"label": "info"}, "confidence": 0.4}
+    Metriche: json_validity=1.0, field_accuracy=0.0 → deterministic_score=0.5
+    Validatore: score=0.3
+    → final_score~0.40, final_passed=false
+
+  NOTA: field_accuracy 0.0 NON produce extra_fields_count/hallucinated_fields_count.
+  La label e' nel campo corretto, e' solo semanticamente sbagliata.
+
+
+11. DOMINI APPLICATIVI (15 LIBRERIE)
+--------------------------------------
+
+  general, legal, academy, network_security, network_monitoring,
+  medical, claims_management, customer_support, online_booking,
+  system_administration, ecommerce, software_development,
+  document_processing, compliance, agent_development
+
+
+12. RIEPILOGO FINALE
+--------------------
+
+  COSA FA IL SISTEMA:
+    - Invia prompt strutturati a modelli LLM
+    - Verifica che i prompt non contengano le risposte corrette
+    - Valuta risposte con metriche oggettive (deterministiche)
+    - Usa segnali euristici come diagnostica (non decisivi)
+    - Usa un secondo LLM come "giudice" per la valutazione semantica
+    - Protegge da valutazioni errate del giudice (floor per classe task)
+    - Traccia validator_status, error_message, raw_response, tentativi
+    - Separa deterministic_passed, validator_passed, final_passed
+    - Genera report, grafici, export
+
+  COSA NON FA IL SISTEMA:
+    - NON mostra le risposte attese ai modelli testati
+    - NON permette al giudice di annullare valutazioni deterministiche
+    - NON usa placeholder generici nei prompt
+    - NON mescola dati di test con dati di valutazione
+    - NON applica metriche di una tipologia a un'altra
+    - NON calcola unsupported_claim_rate senza validatore LLM
+    - NON usa field_accuracy per giudicare finding di code_analysis
+    - NON considera "non contiene/non riporta" come answer_absent

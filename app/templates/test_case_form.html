@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}Test Case{% endblock %}
+{% block content %}
+<h1>Test Case</h1>
+
+{% if mode == 'list' %}
+<div style="margin-bottom:15px">
+    <a href="/test-cases/new" class="btn">Nuovo Test Case</a>
+</div>
+
+{% for lib_id, lib_data in lib_groups.items() %}
+<div class="lib-panel">
+    <div class="lib-panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="lib-toggle">&#9660;</span>
+        <strong>{{ lib_data.label | e }}</strong>
+        <span class="lib-count">{{ lib_data.cases | length }} test</span>
+    </div>
+    <div class="lib-panel-body" style="display:block">
+        <table style="margin:0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Titolo</th>
+                    <th>Tipo</th>
+                    <th style="max-width:200px">Descrizione</th>
+                    <th>Difficolta</th>
+                    <th>Rischio</th>
+                    <th>Abilitato</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tc in lib_data.cases %}
+                <tr{% if not tc.enabled %} style="opacity:0.5"{% endif %}>
+                    <td>{{ tc.id }}</td>
+                    <td>{{ tc.title | e }}</td>
+                    <td>{{ tc.test_type_id | e }}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ tc.description | e }}">{{ (tc.description or '')[:50] | e }}</td>
+                    <td>{{ tc.difficulty | e }}</td>
+                    <td>{{ tc.risk_level | e }}</td>
+                    <td>{{ 'Si' if tc.enabled else 'No' }}</td>
+                    <td class="actions">
+                        <a href="/test-cases/{{ tc.id }}" class="btn-small">Vedi</a>
+                        <a href="/test-cases/{{ tc.id }}/edit" class="btn-small">Modifica</a>
+                        <form method="post" action="/test-cases/{{ tc.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare?')">
+                            <button type="submit" class="btn-small btn-danger">Elimina</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<p>Nessun test case.</p>
+{% endfor %}
+
+{% elif mode == 'create' %}
+
+<form method="post" action="/test-cases" enctype="multipart/form-data" class="form">
+    <div class="form-group">
+        <label>Titolo *</label>
+        <input type="text" name="title" required>
+    </div>
+    <div class="form-group">
+        <label>Tipo test *</label>
+        <select name="test_type_id" required>
+            <option value="">-- Seleziona --</option>
+            {% for tt in test_types %}
+            <option value="{{ tt.id | e }}">{{ tt.label | e }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label>Descrizione</label>
+        <textarea name="description" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Input testuale</label>
+        <textarea name="input_text" rows="6"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Contesto</label>
+        <textarea name="context_text" rows="4"></textarea>
+    </div>
+    <div class="form-group">
+        <label>System prompt (opzionale)</label>
+        <textarea name="system_prompt" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Prompt inviato al modello / template del test case</label>
+        <textarea name="user_prompt_template" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Risultato atteso (JSON)</label>
+        <textarea name="expected_output_json" rows="6"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Expected text</label>
+        <textarea name="expected_text" rows="4"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Expected labels (JSON)</label>
+        <textarea name="expected_labels_json" rows="3"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Rubrica (JSON)</label>
+        <textarea name="rubric_json" rows="4"></textarea>
+    </div>
+    <div class="form-group">
+        <label>Tag (JSON array)</label>
+        <input type="text" name="tags_json" placeholder='["tag1","tag2"]'>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Difficolta'</label>
+            <select name="difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium" selected>Medium</option>
+                <option value="hard">Hard</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Livello rischio</label>
+            <select name="risk_level">
+                <option value="low" selected>Basso</option>
+                <option value="medium">Medio</option>
+                <option value="high">Alto</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Abilitato</label>
+            <select name="enabled">
+                <option value="true" selected>Si</option>
+                <option value="false">No</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-group">
+        <label>File (opzionale, max 50MB)</label>
+        <input type="file" name="file">
+        <small>.txt, .md, .json, .csv, .pdf, .png, .jpg, .jpeg</small>
+    </div>
+    <button type="submit" class="btn">Salva Test Case</button>
+</form>
+
+{% elif mode == 'edit' %}
+
+<form method="post" action="/test-cases/{{ tc.id }}" enctype="multipart/form-data" class="form">
+    <div class="form-group">
+        <label>Titolo *</label>
+        <input type="text" name="title" value="{{ tc.title | e }}" required>
+    </div>
+    <div class="form-group">
+        <label>Tipo test *</label>
+        <select name="test_type_id" required>
+            {% for tt in test_types %}
+            <option value="{{ tt.id | e }}" {% if tt.id == tc.test_type_id %}selected{% endif %}>{{ tt.label | e }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label>Descrizione</label>
+        <textarea name="description" rows="3">{{ tc.description or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Input testuale</label>
+        <textarea name="input_text" rows="6">{{ tc.input_text or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Contesto</label>
+        <textarea name="context_text" rows="4">{{ tc.context_text or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>System prompt (opzionale)</label>
+        <textarea name="system_prompt" rows="3">{{ tc.system_prompt or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Prompt inviato al modello / template del test case</label>
+        <textarea name="user_prompt_template" rows="3">{{ tc.user_prompt_template or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Risultato atteso (JSON)</label>
+        <textarea name="expected_output_json" rows="6">{{ tc.expected_output_json or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Expected text</label>
+        <textarea name="expected_text" rows="4">{{ tc.expected_text or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Expected labels (JSON)</label>
+        <textarea name="expected_labels_json" rows="3">{{ tc.expected_labels_json or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Rubrica (JSON)</label>
+        <textarea name="rubric_json" rows="4">{{ tc.rubric_json or '' | e }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>Tag (JSON array)</label>
+        <input type="text" name="tags_json" value="{{ tc.tags_json or '' | e }}">
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Difficolta'</label>
+            <select name="difficulty">
+                <option value="easy" {% if tc.difficulty == 'easy' %}selected{% endif %}>Easy</option>
+                <option value="medium" {% if tc.difficulty == 'medium' %}selected{% endif %}>Medium</option>
+                <option value="hard" {% if tc.difficulty == 'hard' %}selected{% endif %}>Hard</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Rischio</label>
+            <select name="risk_level">
+                <option value="low" {% if tc.risk_level == 'low' %}selected{% endif %}>Basso</option>
+                <option value="medium" {% if tc.risk_level == 'medium' %}selected{% endif %}>Medio</option>
+                <option value="high" {% if tc.risk_level == 'high' %}selected{% endif %}>Alto</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Abilitato</label>
+            <select name="enabled">
+                <option value="true" {% if tc.enabled %}selected{% endif %}>Si</option>
+                <option value="false" {% if not tc.enabled %}selected{% endif %}>No</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-group">
+        <label>File (opzionale)</label>
+        <input type="file" name="file">
+    </div>
+    <button type="submit" class="btn">Aggiorna Test Case</button>
+</form>
+
+{% elif mode == 'detail' %}
+
+<h2>{{ tc.title | e }}</h2>
+<table>
+    <tr><th>ID</th><td>{{ tc.id }}</td></tr>
+    <tr><th>Tipo</th><td>{{ tc.test_type_id | e }}</td></tr>
+    <tr><th>Descrizione</th><td>{{ tc.description or '' | e }}</td></tr>
+    <tr><th>Difficolta'</th><td>{{ tc.difficulty | e }}</td></tr>
+    <tr><th>Rischio</th><td>{{ tc.risk_level | e }}</td></tr>
+    <tr><th>Abilitato</th><td>{{ 'Si' if tc.enabled else 'No' }}</td></tr>
+    <tr><th>Input</th><td><pre>{{ tc.input_text or '' | e }}</pre></td></tr>
+    <tr><th>Contesto</th><td><pre>{{ tc.context_text or '' | e }}</pre></td></tr>
+    <tr><th>System Prompt</th><td><pre>{{ tc.system_prompt or '' | e }}</pre></td></tr>
+    <tr><th>Expected JSON</th><td><pre>{{ tc.expected_output_json or '' | e }}</pre></td></tr>
+    <tr><th>Expected Text</th><td><pre>{{ tc.expected_text or '' | e }}</pre></td></tr>
+    <tr><th>Rubrica</th><td><pre>{{ tc.rubric_json or '' | e }}</pre></td></tr>
+</table>
+<a href="/test-cases/{{ tc.id }}/edit" class="btn">Modifica</a>
+<a href="/test-cases" class="btn">Torna alla lista</a>
+
+{% endif %}
+{% endblock %}

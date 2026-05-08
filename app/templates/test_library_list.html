@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Librerie Test{% endblock %}
+{% block content %}
+<h1>Librerie di Test</h1>
+
+<div style="margin-bottom:15px">
+    <button onclick="document.getElementById('add-lib-form').style.display='block'" class="btn">Aggiungi Libreria</button>
+</div>
+
+<div id="add-lib-form" class="modal-form" style="display:none">
+    <form method="post" action="/libraries/" class="form-inline">
+        <h3>Nuova Libreria</h3>
+        <div class="form-row">
+            <div class="form-group"><label>ID *</label><input type="text" name="id" required></div>
+            <div class="form-group"><label>Label *</label><input type="text" name="label" required></div>
+        </div>
+        <div class="form-group"><label>Descrizione</label><input type="text" name="description"></div>
+        <div class="form-row">
+            <div class="form-group"><label>Dominio</label><input type="text" name="domain"></div>
+            <div class="form-group"><label>Tag (separati da virgola)</label><input type="text" name="tags"></div>
+            <div class="form-group"><label>Abilitato</label><select name="enabled"><option value="true">Si</option><option value="false">No</option></select></div>
+        </div>
+        <button type="submit" class="btn">Crea</button>
+        <button type="button" class="btn btn-small" onclick="document.getElementById('add-lib-form').style.display='none'" style="background:#888">Annulla</button>
+    </form>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Abilitato</th>
+            <th>ID</th>
+            <th>Label</th>
+            <th>Dominio</th>
+            <th>Descrizione</th>
+            <th>N. Test</th>
+            <th>Tipologie</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in libraries %}
+        <tr{% if not item.lib.enabled %} style="opacity:0.5"{% endif %}>
+            <td>{{ 'Si' if item.lib.enabled else 'No' }}</td>
+            <td>{{ item.lib.id | e }}</td>
+            <td><a href="/test-cases?library={{ item.lib.id }}">{{ item.lib.label | e }}</a></td>
+            <td>{{ item.lib.domain or '-' | e }}</td>
+            <td>{{ (item.lib.description or '')[:80] | e }}</td>
+            <td>{{ item.tc_count }}</td>
+            <td>{% for tt, cnt in item.type_counts.items() %}{{ tt }}:{{ cnt }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+            <td class="actions">
+                <a href="/test-cases?library={{ item.lib.id }}" class="btn-small">Test</a>
+                <form method="post" action="/libraries/{{ item.lib.id }}/toggle" style="display:inline">
+                    <button type="submit" class="btn-small">{{ 'Disabilita' if item.lib.enabled else 'Abilita' }}</button>
+                </form>
+                <form method="post" action="/libraries/{{ item.lib.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare libreria {{ item.lib.id | e }}? I test case saranno spostati in general.')">
+                    <button type="submit" class="btn-small btn-danger">Elimina</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8">Nessuna libreria.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - LLM Local Test Lab{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_models }}</div>
+        <div class="stat-label">Modelli</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.enabled_models }}</div>
+        <div class="stat-label">Abilitati</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_test_cases }}</div>
+        <div class="stat-label">Test Case</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_runs }}</div>
+        <div class="stat-label">Run</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.avg_score }}</div>
+        <div class="stat-label">Score Medio</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.avg_latency }} ms</div>
+        <div class="stat-label">Latenza Media</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.error_rate }}%</div>
+        <div class="stat-label">Error Rate</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.best_model or '-' }}</div>
+        <div class="stat-label">Miglior Modello</div>
+    </div>
+</div>
+
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Score medio per modello</h3>
+        <canvas id="chart-model-scores"></canvas>
+        <p class="chart-desc">Media del final_score di tutti i test eseguiti per ciascun modello. Piu alto e migliore.</p>
+    </div>
+    <div class="chart-container">
+        <h3>Pass rate per modello</h3>
+        <canvas id="chart-model-pass-rate"></canvas>
+        <p class="chart-desc">Percentuale di test con score >= 0.80 per modello. Indica l'affidabilita complessiva.</p>
+    </div>
+</div>
+
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Latenza media per modello</h3>
+        <canvas id="chart-model-latency"></canvas>
+        <p class="chart-desc">Tempo medio di risposta in millisecondi. Valori piu bassi indicano modelli piu veloci.</p>
+    </div>
+    <div class="chart-container">
+        <h3>Valid JSON rate per modello</h3>
+        <canvas id="chart-model-json"></canvas>
+        <p class="chart-desc">Percentuale di risposte parseabili come JSON valido. Fondamentale per task strutturati.</p>
+    </div>
+</div>
+
+<h2>Ultime esecuzioni</h2>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Stato</th>
+            <th>Avviata</th>
+            <th>Completata</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in recent_runs %}
+        <tr>
+            <td>{{ run.id }}</td>
+            <td><a href="/test-runs/{{ run.id }}">{{ run.name }}</a></td>
+            <td><span class="status-{{ run.status }}">{{ run.status }}</span></td>
+            <td>{{ run.started_at }}</td>
+            <td>{{ run.completed_at }}</td>
+            <td><a href="/test-runs/{{ run.id }}">Dettagli</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">Nessuna esecuzione</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+var chartData = JSON.parse('{{ chart_data | safe }}');
+document.addEventListener('DOMContentLoaded', function() {
+    if (chartData.model_scores && chartData.model_scores.labels.length > 0) {
+        makeBarChart('chart-model-scores', chartData.model_scores.labels, chartData.model_scores.data, 'Score medio', 'rgba(34,139,34,0.7)');
+    }
+    if (chartData.model_pass_rate && chartData.model_pass_rate.labels.length > 0) {
+        makeBarChart('chart-model-pass-rate', chartData.model_pass_rate.labels, chartData.model_pass_rate.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    }
+    if (chartData.model_latency && chartData.model_latency.labels.length > 0) {
+        makeBarChart('chart-model-latency', chartData.model_latency.labels, chartData.model_latency.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
+    }
+    if (chartData.model_json_rate && chartData.model_json_rate.labels.length > 0) {
+        makeBarChart('chart-model-json', chartData.model_json_rate.labels, chartData.model_json_rate.data, 'JSON Valid %', 'rgba(153,102,255,0.7)');
+    }
+});
+</script>
+{% endblock %}

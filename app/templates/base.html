@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}LLM Local Test Lab{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/charts.js"></script>
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>LLM Test Lab</h2>
+        </div>
+        <ul class="nav-links">
+            <li><a href="/dashboard" class="{% if request.url.path == '/dashboard' or request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
+            <li><a href="/config" class="{% if '/config' in request.url.path %}active{% endif %}">Configurazione</a></li>
+            <li><a href="/models" class="{% if '/models' in request.url.path %}active{% endif %}">Modelli</a></li>
+            <li><a href="/test-types" class="{% if '/test-types' in request.url.path %}active{% endif %}">Tipologie Test</a></li>
+            <li><a href="/libraries" class="{% if '/libraries' in request.url.path %}active{% endif %}">Librerie Test</a></li>
+            <li><a href="/test-cases" class="{% if '/test-cases' in request.url.path %}active{% endif %}">Test Case</a></li>
+            <li><a href="/test-runs" class="{% if '/test-runs' in request.url.path %}active{% endif %}">Esecuzioni</a></li>
+            <li><a href="/reports" class="{% if '/reports' in request.url.path %}active{% endif %}">Report</a></li>
+        </ul>
+    </nav>
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

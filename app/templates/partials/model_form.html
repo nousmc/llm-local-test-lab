@@ -1,0 +1,81 @@
+<form method="post" action="{{ '/models/' + model.id + '/update' if is_edit else '/models' }}" class="form">
+    <div class="form-row">
+        <div class="form-group">
+            <label>ID *</label>
+            <input type="text" name="{{ 'new_id' if is_edit else 'model_id' }}" value="{{ model.id | e if model else '' }}" required placeholder="es. my-model-id" {{ 'readonly' if is_edit else '' }}>
+        </div>
+        <div class="form-group">
+            <label>Label *</label>
+            <input type="text" name="label" value="{{ model.label | e if model else '' }}" required placeholder="es. My LLM Model">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Provider *</label>
+            <select name="provider" required>
+                <option value="">-- Seleziona provider --</option>
+                {% for p in providers %}
+                <option value="{{ p.name | e }}" {% if model and model.provider == p.name %}selected{% endif %}>{{ p.label | e }} ({{ p.name | e }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Modello (API name) *</label>
+            <input type="text" name="model_name" value="{{ model.model_name | e if model else '' }}" required placeholder="es. llama3.2:3b">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Family</label>
+            <input type="text" name="family" value="{{ model.family | e if model else '' }}" placeholder="es. llama">
+        </div>
+        <div class="form-group">
+            <label>Size (B)</label>
+            <input type="number" name="size_b" value="{{ model.size_b if model and model.size_b else '' }}" placeholder="es. 3">
+        </div>
+        <div class="form-group">
+            <label>Context Window</label>
+            <input type="number" name="context_window" value="{{ model.context_window if model and model.context_window else '' }}" placeholder="es. 8192">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Supporta Vision</label>
+            <select name="supports_vision">
+                <option value="false" {% if not model or not model.supports_vision %}selected{% endif %}>No</option>
+                <option value="true" {% if model and model.supports_vision %}selected{% endif %}>Si</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Supporta JSON</label>
+            <select name="supports_json">
+                <option value="false" {% if not model or not model.supports_json %}selected{% endif %}>No</option>
+                <option value="true" {% if model and model.supports_json %}selected{% endif %}>Si</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Abilitato</label>
+            <select name="enabled">
+                <option value="true" {% if not model or model.enabled %}selected{% endif %}>Si</option>
+                <option value="false" {% if model and not model.enabled %}selected{% endif %}>No</option>
+            </select>
+        </div>
+    </div>
+    <h3>Parametri default</h3>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Temperature</label>
+            <input type="number" step="0.1" name="temperature" value="{{ model.default_params_json | from_json_or('temperature', '0.0') if model else '0.0' }}">
+        </div>
+        <div class="form-group">
+            <label>Top P</label>
+            <input type="number" step="0.1" name="top_p" value="{{ model.default_params_json | from_json_or('top_p', '0.9') if model else '0.9' }}">
+        </div>
+        <div class="form-group">
+            <label>Max Tokens</label>
+            <input type="number" name="max_tokens" value="{{ model.default_params_json | from_json_or('max_tokens', '1024') if model else '1024' }}">
+        </div>
+    </div>
+    <button type="submit" class="btn">{{ 'Aggiorna' if is_edit else 'Crea' }} Modello</button>
+    <a href="/models" class="btn" style="background:#888">Annulla</a>
+</form>

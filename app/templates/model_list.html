@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Modelli{% endblock %}
+{% block content %}
+<h1>Modelli Configurati</h1>
+
+{% if mode == 'list' %}
+
+<div style="margin-bottom:15px">
+    <a href="/models/new" class="btn">Aggiungi Modello</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Abilitato</th>
+            <th>ID</th>
+            <th>Label</th>
+            <th>Provider</th>
+            <th>Modello</th>
+            <th>Size</th>
+            <th>Context</th>
+            <th>Vision</th>
+            <th>JSON</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for m in models %}
+        <tr{% if not m.enabled %} style="opacity:0.5"{% endif %}>
+            <td>{{ 'Si' if m.enabled else 'No' }}</td>
+            <td>{{ m.id | e }}</td>
+            <td>{{ m.label | e }}</td>
+            <td>{{ m.provider | e }}</td>
+            <td>{{ m.model_name | e }}</td>
+            <td>{{ m.size_b if m.size_b else '-' }}</td>
+            <td>{{ m.context_window if m.context_window else '-' }}</td>
+            <td>{{ 'Si' if m.supports_vision else 'No' }}</td>
+            <td>{{ 'Si' if m.supports_json else 'No' }}</td>
+            <td class="actions">
+                <button onclick="probeModel('{{ m.id }}')" class="btn-small">Probe</button>
+                <a href="/models/{{ m.id }}/edit" class="btn-small">Modifica</a>
+                <form method="post" action="/models/{{ m.id }}/{{ 'enable' if not m.enabled else 'disable' }}" style="display:inline">
+                    <button type="submit" class="btn-small">{{ 'Abilita' if not m.enabled else 'Disabilita' }}</button>
+                </form>
+                <form method="post" action="/models/{{ m.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare modello {{ m.id | e }}?')">
+                    <button type="submit" class="btn-small btn-danger">Elimina</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10">Nessun modello configurato.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div id="probe-result" class="probe-result" style="display:none"></div>
+
+{% elif mode == 'create' %}
+
+<h2>Nuovo Modello</h2>
+
+{% set params = {} %}
+{% set model = None %}
+{% include "partials/model_form.html" %}
+
+{% elif mode == 'edit' %}
+
+<h2>Modifica Modello: {{ model.label | e }}</h2>
+
+{% set is_edit = True %}
+{% include "partials/model_form.html" %}
+
+{% endif %}
+
+<script>
+async function probeModel(modelId) {
+    var resultDiv = document.getElementById('probe-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = 'Probing ' + modelId + '...';
+    try {
+        var resp = await fetch('/models/' + modelId + '/probe', {method: 'POST'});
+        var data = await resp.json();
+        if (data.success) {
+            resultDiv.innerHTML = '<strong>Probe OK:</strong> ' + (data.response || '') + ' <br>Latenza: ' + data.latency_ms + 'ms';
+        } else {
+            resultDiv.innerHTML = '<strong>Probe Fallito:</strong> ' + (data.error || 'Errore sconosciuto');
+        }
+    } catch(e) {
+        resultDiv.innerHTML = '<strong>Errore:</strong> ' + e.message;
+    }
+}
+</script>
+{% endblock %}

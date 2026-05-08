@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Configurazione{% endblock %}
+{% block content %}
+<h1>Configurazione</h1>
+
+<div class="config-section">
+    <h2>Applicazione</h2>
+    <table>
+        <tr><th>Parametro</th><th>Valore</th></tr>
+        <tr><td>Nome</td><td>{{ config.app.name | e }}</td></tr>
+        <tr><td>Porta</td><td>{{ config.app.port }}</td></tr>
+        <tr><td>Debug</td><td>{{ config.app.debug }}</td></tr>
+        <tr><td>Database</td><td>{{ config.app.database_url | e }}</td></tr>
+    </table>
+</div>
+
+<div class="config-section">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Provider</h2>
+        <button onclick="document.getElementById('add-provider-form').style.display='block'" class="btn btn-small">Aggiungi Provider</button>
+    </div>
+
+    <div id="add-provider-form" class="modal-form" style="display:{% if mode == 'edit_provider' %}block{% else %}none{% endif %}">
+        <form method="post" action="/config/providers/{% if edit_provider %}{{ edit_provider.id }}{% endif %}" class="form-inline">
+            <h3>{% if edit_provider %}Modifica Provider{% else %}Nuovo Provider{% endif %}</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nome *</label>
+                    <input type="text" name="name" value="{{ edit_provider.name | e if edit_provider else '' }}" required placeholder="es. ollama">
+                </div>
+                <div class="form-group">
+                    <label>Label *</label>
+                    <input type="text" name="label" value="{{ edit_provider.label | e if edit_provider else '' }}" required placeholder="es. Ollama">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Base URL *</label>
+                <input type="text" name="base_url" value="{{ edit_provider.base_url | e if edit_provider else '' }}" required placeholder="es. http://localhost:11434">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Timeout (s)</label>
+                    <input type="number" name="timeout_seconds" value="{{ edit_provider.timeout_seconds if edit_provider else 180 }}">
+                </div>
+                <div class="form-group">
+                    <label>App Name</label>
+                    <input type="text" name="app_name" value="{{ edit_provider.app_name | e if edit_provider else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Site URL</label>
+                    <input type="text" name="site_url" value="{{ edit_provider.site_url | e if edit_provider else '' }}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Abilitato</label>
+                <select name="enabled">
+                    <option value="true" {% if edit_provider and edit_provider.enabled %}selected{% endif %}>Si</option>
+                    <option value="false" {% if edit_provider and not edit_provider.enabled %}selected{% endif %}>No</option>
+                </select>
+            </div>
+            <button type="submit" class="btn">{% if edit_provider %}Aggiorna{% else %}Crea{% endif %}</button>
+            <button type="button" class="btn btn-small" onclick="document.getElementById('add-provider-form').style.display='none'" style="background:#888">Annulla</button>
+        </form>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Abilitato</th>
+                <th>Nome</th>
+                <th>Label</th>
+                <th>Base URL</th>
+                <th>Timeout</th>
+                <th>Azioni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for prov in providers %}
+            <tr{% if not prov.enabled %} style="opacity:0.5"{% endif %}>
+                <td>{{ 'Si' if prov.enabled else 'No' }}</td>
+                <td>{{ prov.name | e }}</td>
+                <td>{{ prov.label | e }}</td>
+                <td>{{ prov.base_url | e }}</td>
+                <td>{{ prov.timeout_seconds }}s</td>
+                <td class="actions">
+                    <a href="/config/providers/{{ prov.id }}/edit" class="btn-small">Modifica</a>
+                    <form method="post" action="/config/providers/{{ prov.id }}/toggle" style="display:inline">
+                        <button type="submit" class="btn-small">{{ 'Disabilita' if prov.enabled else 'Abilita' }}</button>
+                    </form>
+                    <form method="post" action="/config/providers/{{ prov.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare provider {{ prov.name | e }}?')">
+                        <button type="submit" class="btn-small btn-danger">Elimina</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6">Nessun provider configurato. Aggiungine uno.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="config-section">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Validatore</h2>
+        <div>
+            {% if validator %}
+            <a href="/config/validator/edit" class="btn btn-small">Modifica Validatore</a>
+            <form method="post" action="/config/validator/{{ validator.id }}/toggle" style="display:inline;margin-left:5px">
+                <button type="submit" class="btn-small">{{ 'Disabilita' if validator.enabled else 'Abilita' }}</button>
+            </form>
+            <form method="post" action="/config/validator/{{ validator.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare la configurazione validatore?')">
+                <button type="submit" class="btn-small btn-danger">Elimina</button>
+            </form>
+            {% else %}
+            <button onclick="document.getElementById('validator-form').style.display='block'" class="btn btn-small">Aggiungi Validatore</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="validator-form" class="modal-form" style="display:{% if mode == 'edit_validator' or not validator %}block{% else %}none{% endif %}">
+        <form method="post" action="/config/validator/{% if validator %}{{ validator.id }}{% endif %}" class="form-inline">
+            <h3>{% if validator %}Modifica Configurazione Validatore{% else %}Configura Validatore{% endif %}</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Abilitato</label>
+                    <select name="enabled">
+                        <option value="true" {% if validator and validator.enabled %}selected{% endif %}>Si</option>
+                        <option value="false" {% if validator and not validator.enabled %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Modo validazione</label>
+                    <select name="validation_mode">
+                        <option value="rubric_json" {% if validator and validator.validation_mode == 'rubric_json' %}selected{% endif %}>Rubric JSON</option>
+                        <option value="binary_pass_fail" {% if validator and validator.validation_mode == 'binary_pass_fail' %}selected{% endif %}>Binary Pass/Fail</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Provider *</label>
+                    <select name="provider" required>
+                        <option value="">-- Seleziona --</option>
+                        {% for p in providers %}{% if p.enabled %}
+                        <option value="{{ p.name | e }}" {% if validator and validator.provider == p.name %}selected{% endif %}>{{ p.label | e }}</option>
+                        {% endif %}{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Modello *</label>
+                    <input type="text" name="model" value="{{ validator.model | e if validator else '' }}" required placeholder="es. qwen2.5:14b">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Fallback Provider</label>
+                    <select name="fallback_provider">
+                        <option value="">-- Nessuno --</option>
+                        {% for p in providers %}{% if p.enabled %}
+                        <option value="{{ p.name | e }}" {% if validator and validator.fallback_provider == p.name %}selected{% endif %}>{{ p.label | e }}</option>
+                        {% endif %}{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fallback Model</label>
+                    <input type="text" name="fallback_model" value="{{ validator.fallback_model | e if validator else '' }}" placeholder="es. openai/gpt-4o-mini">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Temperature</label>
+                    <input type="number" step="0.1" name="temperature" value="{{ validator.temperature if validator else '0.0' }}">
+                </div>
+                <div class="form-group">
+                    <label>Max Tokens</label>
+                    <input type="number" name="max_tokens" value="{{ validator.max_tokens if validator else '2048' }}">
+                </div>
+            </div>
+            <div style="margin-top:10px">
+                <button type="submit" class="btn">{{ 'Aggiorna' if validator else 'Crea' }}</button>
+                <button type="button" class="btn btn-small" onclick="document.getElementById('validator-form').style.display='none'" style="background:#888">Annulla</button>
+            </div>
+        </form>
+    </div>
+
+    {% if validator %}
+    <table style="margin-top:15px">
+        <tr><th>Parametro</th><th>Valore</th></tr>
+        <tr><td>Abilitato</td><td>{{ 'Si' if validator.enabled else 'No' }}</td></tr>
+        <tr><td>Provider</td><td>{{ validator.provider | e }}</td></tr>
+        <tr><td>Modello</td><td>{{ validator.model | e }}</td></tr>
+        <tr><td>Fallback Provider</td><td>{{ validator.fallback_provider or '-' | e }}</td></tr>
+        <tr><td>Fallback Model</td><td>{{ validator.fallback_model or '-' | e }}</td></tr>
+        <tr><td>Modo validazione</td><td>{{ validator.validation_mode | e }}</td></tr>
+        <tr><td>Temperature</td><td>{{ validator.temperature }}</td></tr>
+        <tr><td>Max Tokens</td><td>{{ validator.max_tokens }}</td></tr>
+    </table>
+    {% else %}
+    <div class="warning" style="margin-top:10px">Nessun validatore configurato. Clicca "Aggiungi Validatore" per configurarlo.</div>
+    {% endif %}
+</div>
+
+<div class="config-section">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Segreti / API Keys</h2>
+        <button onclick="document.getElementById('secrets-form').style.display='block'; this.style.display='none'" class="btn btn-small">Modifica Chiavi</button>
+    </div>
+
+    <div id="secrets-form" class="modal-form" style="display:none">
+        <form method="post" action="/config/secrets/" class="form-inline">
+            <h3>Modifica API Keys</h3>
+            <div class="form-group">
+                <label>OPENROUTER_API_KEY</label>
+                <input type="password" name="OPENROUTER_API_KEY" value="{{ secret_plain.get('OPENROUTER_API_KEY', '') | e }}" placeholder="sk-or-...">
+            </div>
+            <div class="form-group">
+                <label>OLLAMA_API_KEY</label>
+                <input type="password" name="OLLAMA_API_KEY" value="{{ secret_plain.get('OLLAMA_API_KEY', '') | e }}" placeholder="(opzionale)">
+            </div>
+            <div class="form-group">
+                <label>APP_SECRET_KEY</label>
+                <input type="password" name="APP_SECRET_KEY" value="{{ secret_plain.get('APP_SECRET_KEY', '') | e }}" placeholder="change-me">
+            </div>
+            <div style="margin-top:10px">
+                <button type="submit" class="btn">Salva Chiavi</button>
+                <button type="button" class="btn btn-small" onclick="document.getElementById('secrets-form').style.display='none'; document.querySelector('#config-section-secrets button').style.display='inline-block'" style="background:#888">Annulla</button>
+            </div>
+        </form>
+    </div>
+
+    <table style="margin-top:15px">
+        <thead>
+            <tr><th>Chiave</th><th>Stato</th><th>Valore (mascherato)</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>OPENROUTER_API_KEY</td>
+                <td>{{ 'Configurata' if secrets.get('OPENROUTER_API_KEY') and secrets['OPENROUTER_API_KEY'] != '(non impostata)' else 'Mancante' }}</td>
+                <td><code>{{ secrets.get('OPENROUTER_API_KEY', '(non impostata)') | e }}</code></td>
+            </tr>
+            <tr>
+                <td>OLLAMA_API_KEY</td>
+                <td>{{ 'Configurata' if secrets.get('OLLAMA_API_KEY') and secrets['OLLAMA_API_KEY'] != '(non impostata)' else 'Mancante / Non richiesta' }}</td>
+                <td><code>{{ secrets.get('OLLAMA_API_KEY', '(non impostata)') | e }}</code></td>
+            </tr>
+            <tr>
+                <td>APP_SECRET_KEY</td>
+                <td>{{ 'Configurata' if secrets.get('APP_SECRET_KEY') and secrets['APP_SECRET_KEY'] != '(non impostata)' else 'Default' }}</td>
+                <td><code>{{ secrets.get('APP_SECRET_KEY', '(non impostata)') | e }}</code></td>
+            </tr>
+        </tbody>
+    </table>
+    {% if not secrets_available %}
+    <div class="warning" style="margin-top:10px">
+        Nessuna chiave API configurata. Clicca "Modifica Chiavi" per inserirle.
+    </div>
+    {% endif %}
+</div>
+
+<div class="config-section">
+    <h2>Esecuzione</h2>
+    <table>
+        <tr><th>Parametro</th><th>Valore</th></tr>
+        <tr><td>Parallelismo</td><td>{{ config.execution.parallelism }}</td></tr>
+        <tr><td>Retry</td><td>{{ config.execution.retry_attempts }}</td></tr>
+        <tr><td>Soglia pass</td><td>{{ config.thresholds.default_pass_score }}</td></tr>
+    </table>
+</div>
+
+<div class="config-section">
+    <h2>Metriche</h2>
+    <p>{{ config.metrics.enabled | join(', ') }}</p>
+</div>
+
+<form method="post" action="/config/reload" style="margin-top:20px">
+    <button type="submit" class="btn">Ricarica Configurazione</button>
+</form>
+{% endblock %}

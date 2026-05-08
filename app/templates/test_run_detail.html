@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.id }} - Dettaglio{% endblock %}
+{% block content %}
+
+{% if mode == 'result_detail' and result_detail %}
+<h1>Dettaglio Risultato</h1>
+<p><a href="/test-runs/{{ run.id }}">&larr; Torna alla run</a></p>
+
+<table>
+    <tr><th>ID</th><td>{{ result_detail.id }}</td></tr>
+    <tr><th>Modello</th><td>{{ result_detail.model_id | e }}</td></tr>
+    <tr><th>Provider</th><td>{{ result_detail.provider | e }}</td></tr>
+    <tr><th>Stato</th><td><span class="status-{{ result_detail.status }}">{{ result_detail.status | e }}</span></td></tr>
+    <tr><th>Latenza</th><td>{{ result_detail.latency_ms }} ms</td></tr>
+    <tr><th>Token prompt</th><td>{{ result_detail.prompt_tokens }}</td></tr>
+    <tr><th>Token completamento</th><td>{{ result_detail.completion_tokens }}</td></tr>
+    <tr><th>Token totali</th><td>{{ result_detail.total_tokens }}</td></tr>
+    <tr><th>Token/sec</th><td>{{ result_detail.tokens_per_second }}</td></tr>
+    <tr><th>Costo stimato</th><td>${{ result_detail.estimated_cost }}</td></tr>
+    {% if result_detail.error_message %}
+    <tr><th>Errore</th><td style="color:red">{{ result_detail.error_message | e }}</td></tr>
+    {% endif %}
+</table>
+
+<h3>Prompt inviato</h3>
+<pre style="max-height:300px;overflow:auto;background:#f5f5f5;padding:10px">{{ result_detail.prompt_text or '' | e }}</pre>
+
+<h3>Risposta modello</h3>
+<pre style="max-height:300px;overflow:auto;background:#f5f5f5;padding:10px">{{ result_detail.response_text or '' | e }}</pre>
+
+<h3>JSON response</h3>
+<pre style="max-height:300px;overflow:auto;background:#f5f5f5;padding:10px">{{ result_detail.response_json or '' | e }}</pre>
+
+<h3>Validazione</h3>
+{% if validations %}
+{% for v in validations %}
+<table>
+    <tr><th>Validatore</th><td>{{ v.validator_provider | e }} / {{ v.validator_model | e }}</td></tr>
+    <tr><th>Stato validatore</th><td>
+        {% if v.validator_status and v.validator_status != 'ok' and v.validator_status != 'disabled' %}
+        <span style="color:red;font-weight:bold">Non disponibile</span> ({{ v.validator_status | e }})
+        {% elif v.validator_status == 'disabled' %}
+        <span style="color:#888">Disabilitato</span>
+        {% else %}
+        <span style="color:green">OK</span>
+        {% endif %}
+    </td></tr>
+    {% if v.validator_error_message %}
+    <tr><th>Errore validatore</th><td style="color:red">{{ v.validator_error_message | e }}</td></tr>
+    {% endif %}
+    <tr><th>Tentativi</th><td>{{ v.validator_attempts if v.validator_attempts is not none else '?' }}</td></tr>
+    {% set mode = v.validation_json | from_json_or('final_score_mode', 'normal') %}
+    <tr><th>Modalità scoring</th><td>
+        {% if mode == 'validator_fallback' %}
+        <span style="color:orange;font-weight:bold">Fallback (solo deterministiche)</span>
+        {% else %}
+        Normale
+        {% endif %}
+    </td></tr>
+    <tr><th>Score</th><td>{{ v.score if v.score is not none else 'N/D' }}</td></tr>
+    <tr><th>Passed</th><td>{{ v.passed if v.passed is not none else 'N/D' }}</td></tr>
+    <tr><th>Format Score</th><td>{{ v.format_score if v.format_score is not none else 'N/D' }}</td></tr>
+    <tr><th>Semantic Score</th><td>{{ v.semantic_score if v.semantic_score is not none else 'N/D' }}</td></tr>
+    <tr><th>Completeness</th><td>{{ v.completeness_score if v.completeness_score is not none else 'N/D' }}</td></tr>
+    <tr><th>Safety</th><td>{{ v.safety_score if v.safety_score is not none else 'N/D' }}</td></tr>
+    <tr><th>Hallucination</th><td>{{ v.hallucination_detected }}</td></tr>
+    <tr><th>Refusal</th><td>{{ v.refusal_detected }}</td></tr>
+</table>
+{% endfor %}
+{% else %}
+<p>Nessuna validazione disponibile.</p>
+{% endif %}
+
+<h3>Metriche</h3>
+{% if metrics %}
+{% set has_conflict = [] %}
+<table>
+    <thead><tr><th>Metrica</th><th>Valore</th></tr></thead>
+    <tbody>
+        {% for m in metrics %}
+        <tr{% if m.metric_name == 'validator_conflict_warning' %} style="background:#fff3cd"{% endif %}{% if m.metric_name == 'contaminated' %} style="background:#fce4e4"{% endif %}>
+            <td>{{ m.metric_name | e }}</td>
+            <td>{{ m.metric_value }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Nessuna metrica.</p>
+{% endif %}
+
+{% else %}
+
+<h1>Test Run #{{ run.id }}: {{ run.name | e }}</h1>
+<p>{{ run.description or '' | e }}</p>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value"><span class="status-{{ run.status }}">{{ run.status | e }}</span></div>
+        <div class="stat-label">Stato</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ total_results }}</div>
+        <div class="stat-label">Totale test</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ completed }}</div>
+        <div class="stat-label">Completati</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color:red">{{ failed }}</div>
+        <div class="stat-label">Falliti</div>
+    </div>
+    {% if avg_score is defined %}
+    <div class="stat-card">
+        <div class="stat-value">{{ avg_score }}</div>
+        <div class="stat-label">Score Medio</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ avg_latency }} ms</div>
+        <div class="stat-label">Latenza Media</div>
+    </div>
+    {% endif %}
+</div>
+
+{% if run.status == 'created' %}
+<div style="margin:15px 0">
+    <form method="post" action="/test-runs/{{ run.id }}/start" style="display:inline">
+        <button type="submit" class="btn btn-green">Avvia Run</button>
+    </form>
+</div>
+{% elif run.status == 'running' %}
+<div style="margin:15px 0">
+    <form method="post" action="/test-runs/{{ run.id }}/cancel" style="display:inline">
+        <button type="submit" class="btn btn-danger">Cancella Run</button>
+    </form>
+</div>
+<div class="progress-bar">
+    <div class="progress-fill" style="width:{{ (completed / total_results * 100) if total_results else 0 }}%"></div>
+</div>
+<p style="margin-top:5px;font-size:12px">Auto-refresh: ricarica per aggiornare</p>
+{% elif run.status in ('completed', 'failed') %}
+<div style="margin:15px 0">
+    <form method="post" action="/test-runs/{{ run.id }}/rerun-failed" style="display:inline" onsubmit="return confirm('Rieseguire solo i falliti?')">
+        <button type="submit" class="btn">Riesegui Falliti</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Score medio per modello</h3>
+        <canvas id="chart-run-scores"></canvas>
+        <p class="chart-desc">Media del final_score calcolato per ciascun modello su tutti i test case della run.</p>
+    </div>
+    <div class="chart-container">
+        <h3>Pass rate per modello</h3>
+        <canvas id="chart-run-pass"></canvas>
+        <p class="chart-desc">Percentuale di test superati (score >= 0.80) per ciascun modello nella run corrente.</p>
+    </div>
+</div>
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Latenza media per modello</h3>
+        <canvas id="chart-run-latency"></canvas>
+        <p class="chart-desc">Tempo medio di risposta in millisecondi. Confronta la velocita tra i modelli testati.</p>
+    </div>
+    <div class="chart-container">
+        <h3>Score medio per tipologia test</h3>
+        <canvas id="chart-run-types"></canvas>
+        <p class="chart-desc">Media aggregata dello score per tipo di test. Indica su quali task i modelli performano meglio.</p>
+    </div>
+</div>
+
+{% if chart_data_raw and chart_data_raw.test_type_model_datasets and chart_data_raw.test_type_model_datasets|length > 0 %}
+<div class="charts-row">
+    <div class="chart-container" style="grid-column: 1 / -1">
+        <h3>Score per tipologia - confronto tra modelli</h3>
+        <canvas id="chart-run-type-models"></canvas>
+        <p class="chart-desc">Score medio di ciascun modello suddiviso per tipologia di test. Permette di identificare il modello migliore per ogni categoria di task.</p>
+    </div>
+</div>
+{% endif %}
+
+
+{% if chart_data_raw and chart_data_raw.library_scores and chart_data_raw.library_scores.labels|length > 0 %}
+<div class="charts-row">
+    <div class="chart-container">
+        <h3>Score medio per dominio</h3>
+        <canvas id="chart-run-lib-scores"></canvas>
+        <p class="chart-desc">Media del final_score aggregata per dominio applicativo dei test.</p>
+    </div>
+    <div class="chart-container">
+        <h3>Pass rate per dominio</h3>
+        <canvas id="chart-run-lib-pass"></canvas>
+        <p class="chart-desc">Percentuale di test superati (score >= 0.80) per ciascun dominio.</p>
+    </div>
+</div>
+<div class="charts-row">
+    <div class="chart-container" style="grid-column: 1 / -1">
+        <h3>Score per dominio - confronto tra modelli</h3>
+        <canvas id="chart-run-lib-models"></canvas>
+        <p class="chart-desc">Score medio di ciascun modello suddiviso per dominio applicativo. Evidenzia quale modello eccelle in ogni ambito.</p>
+    </div>
+</div>
+{% endif %}
+{% if executive_report %}
+<div class="config-section">
+    <h2>Report Esecutivo</h2>
+    <div class="executive-report">{{ executive_report | e }}</div>
+    <p style="font-size:11px;color:#888;margin-top:8px">Generato automaticamente dal modello validatore analizzando i risultati della run.</p>
+</div>
+{% endif %}
+
+<h2>Risultati</h2>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Test Case</th>
+            <th>Descrizione</th>
+            <th>Modello</th>
+            <th>Provider</th>
+            <th>Score</th>
+            <th>Status</th>
+            <th>Latenza</th>
+            <th>Errore</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in results %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.test_case_title or r.test_case_id }}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.test_case_desc | e }}">{{ r.test_case_desc | e }}</td>
+            <td>{{ r.model_id | e }}</td>
+            <td>{{ r.provider | e }}</td>
+            <td class="score">{{ r.score if r.score is not none else '-' }}</td>
+            <td><span class="status-{{ r.status }}">{{ r.status | e }}</span></td>
+            <td>{{ r.latency_ms if r.latency_ms else '-' }} ms</td>
+            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="{{ r.error | e if r.error else '' }}">{{ r.error[:50] if r.error else '-' }}</td>
+            <td><a href="/test-runs/{{ run.id }}/results/{{ r.id }}">Dettaglio</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10">Nessun risultato</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div style="margin:15px 0">
+    <a href="/test-runs/{{ run.id }}/results.csv" class="btn">Esporta CSV</a>
+    <a href="/test-runs/{{ run.id }}/results.json" class="btn">Esporta JSON</a>
+</div>
+
+<script>
+try {
+    var chartData = JSON.parse('{{ chart_data | safe }}');
+    document.addEventListener('DOMContentLoaded', function() {
+        if (chartData.model_scores && chartData.model_scores.labels.length > 0) {
+            makeBarChart('chart-run-scores', chartData.model_scores.labels, chartData.model_scores.data, 'Score', 'rgba(34,139,34,0.7)');
+        }
+        if (chartData.model_pass_rate && chartData.model_pass_rate.labels.length > 0) {
+            makeBarChart('chart-run-pass', chartData.model_pass_rate.labels, chartData.model_pass_rate.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+        }
+        if (chartData.model_latency && chartData.model_latency.labels.length > 0) {
+            makeBarChart('chart-run-latency', chartData.model_latency.labels, chartData.model_latency.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
+        }
+        if (chartData.test_type_scores && chartData.test_type_scores.labels.length > 0) {
+            makeBarChart('chart-run-types', chartData.test_type_scores.labels, chartData.test_type_scores.data, 'Score per tipo', 'rgba(153,102,255,0.7)');
+        }
+        if (chartData.test_type_model_datasets && chartData.test_type_model_datasets.length > 0) {
+            makeGroupedBarChart('chart-run-type-models', chartData.test_type_model_labels, chartData.test_type_model_datasets);
+        }
+        if (chartData.library_scores && chartData.library_scores.labels.length > 0) {
+            makeBarChart("chart-run-lib-scores", chartData.library_scores.labels, chartData.library_scores.data, "Score", "rgba(34,139,34,0.7)");
+        }
+        if (chartData.library_pass_rate && chartData.library_pass_rate.labels.length > 0) {
+            makeBarChart("chart-run-lib-pass", chartData.library_pass_rate.labels, chartData.library_pass_rate.data, "Pass Rate %", "rgba(54,162,235,0.7)");
+        }
+        if (chartData.library_model_datasets && chartData.library_model_datasets.length > 0) {
+            makeGroupedBarChart("chart-run-lib-models", chartData.library_model_labels, chartData.library_model_datasets);
+        }
+    });
+} catch(e) {}
+</script>
+
+{% endif %}
+{% endblock %}
