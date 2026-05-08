@@ -1,5 +1,7 @@
 import json
 import re
+import yaml
+from pathlib import Path
 
 from .config_loader import get_validator_config as _get_cfg
 from .provider_router import get_provider_client
@@ -22,8 +24,28 @@ Non aggiungere testo prima o dopo il JSON.
 
 ST_HEADER = "Sei un modello in fase di benchmark.\n\nTipo test: {test_type}\n\nIstruzioni: {instructions}\n"
 
-PROMPT_TEMPLATES = {
-    "classification": ST_HEADER + """Devi classificare il testo nella categoria corretta.
+
+def _load_yaml_templates() -> dict:
+    yaml_path = Path(__file__).resolve().parent.parent.parent / "config" / "prompt_templates.yaml"
+    try:
+        with open(yaml_path) as f:
+            raw = yaml.safe_load(f)
+        templates = {}
+        for tid, entry in raw.items():
+            if isinstance(entry, dict):
+                body = str(entry.get("body", ""))
+                fmt = str(entry.get("answer_format", ""))
+                templates[tid] = ST_HEADER + body + "\n" + MESSAGE_CONTAINER_TEMPLATE % fmt
+        if templates:
+            return templates
+    except Exception:
+        pass
+    return _get_hardcoded_templates()
+
+
+def _get_hardcoded_templates() -> dict:
+    return {
+        "classification": ST_HEADER + """Devi classificare il testo nella categoria corretta.
 
 Classi ammesse (scegline UNA SOLA): {allowed_labels}
 
@@ -34,7 +56,7 @@ Input da classificare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "label": "classe_scelta" }',
 
-    "data_extraction": ST_HEADER + """Devi estrarre dati strutturati dal testo.
+        "data_extraction": ST_HEADER + """Devi estrarre dati strutturati dal testo.
 
 Campi da estrarre (con tipo):
 {field_list}
@@ -49,7 +71,7 @@ Input da analizzare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ {field_placeholders} }',
 
-    "rag_qa": ST_HEADER + """Rispondi alla domanda basandoti ESCLUSIVAMENTE sul contesto fornito.
+        "rag_qa": ST_HEADER + """Rispondi alla domanda basandoti ESCLUSIVAMENTE sul contesto fornito.
 
 {answer_absent_rule}
 
@@ -65,7 +87,7 @@ Contesto:
 {context}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "answer_text": "risposta basata sul contesto", "citations_used": ["parte del contesto citata..."], "answer_absent": false }',
 
-    "summarization": ST_HEADER + """Devi riassumere il testo fornito.
+        "summarization": ST_HEADER + """Devi riassumere il testo fornito.
 
 {format_constraint}
 {length_constraint}
@@ -79,7 +101,7 @@ Testo da sintetizzare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "summary": "testo del riassunto", "key_points": ["punto 1", "punto 2"] }',
 
-    "code_analysis": ST_HEADER + """Analizza il codice fornito e identifica problemi, bug o vulnerabilita.
+        "code_analysis": ST_HEADER + """Analizza il codice fornito e identifica problemi, bug o vulnerabilita.
 
 Linguaggio: {language}
 
@@ -95,7 +117,7 @@ Codice da analizzare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "findings": [{ "type": "bug|security|best_practice|performance", "severity": "low|medium|high|critical", "location": "linea o funzione", "description": "descrizione del problema", "recommendation": "come risolvere" }], "overall_assessment": "valutazione complessiva" }',
 
-    "code_documentation": ST_HEADER + """Scrivi la documentazione per il codice fornito.
+        "code_documentation": ST_HEADER + """Scrivi la documentazione per il codice fornito.
 
 Stile: {doc_style}
 Lingua: {language}
@@ -109,7 +131,7 @@ Codice da documentare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "docstring": "documentazione completa", "parameters": [{ "name": "nome", "type": "tipo", "description": "descrizione" }], "returns": { "type": "tipo", "description": "descrizione" }, "raises": [{ "exception": "NomeEccezione", "condition": "quando viene sollevata" }], "examples": ["esempio duso"] }',
 
-    "refactoring": ST_HEADER + """Riscrivi il codice applicando refactoring.
+        "refactoring": ST_HEADER + """Riscrivi il codice applicando refactoring.
 
 Obiettivo: {target}
 
@@ -125,7 +147,7 @@ Codice da rifattorizzare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "refactored_code": "codice rifattorizzato", "changes_summary": ["cambio 1", "cambio 2"], "preserved_behavior": true }',
 
-    "image_description": ST_HEADER + """Descrivi l'immagine in modo neutro e oggettivo.
+        "image_description": ST_HEADER + """Descrivi l'immagine in modo neutro e oggettivo.
 
 Stile: {style}
 {length_constraint}
@@ -138,7 +160,7 @@ Regole:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "description": "descrizione oggettiva dellimmagine", "objects_detected": ["oggetto 1", "oggetto 2"], "scene_type": "tipo di scena", "dominant_colors": ["colore 1"] }',
 
-    "ocr_extraction": ST_HEADER + """Estrai i dati dal documento OCR.
+        "ocr_extraction": ST_HEADER + """Estrai i dati dal documento OCR.
 
 Campi da estrarre:
 {field_list}
@@ -153,7 +175,7 @@ Documento da analizzare:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ {field_placeholders} }',
 
-    "speech_to_text_postprocess": ST_HEADER + """Pulisci e struttura la trascrizione grezza.
+        "speech_to_text_postprocess": ST_HEADER + """Pulisci e struttura la trascrizione grezza.
 
 Trasformazione richiesta:
 - Rimuovi riempitivi (emh, ehm, ecc).
@@ -170,7 +192,7 @@ Trascrizione grezza:
 {input_text}
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "clean_transcript": "trascrizione pulita", "action_items": [{ "owner": "nome o null", "task": "task da fare", "deadline": "data o null" }], "entities_mentioned": [{ "name": "nome entita", "type": "person|date|project|other" }] }',
 
-    "contextual_insight": ST_HEADER + """Analizza la conversazione multi-turno e produci un'analisi strutturata che dimostri comprensione del contesto, capacita di approfondimento e creativita pertinente al dominio.
+        "contextual_insight": ST_HEADER + """Analizza la conversazione multi-turno e produci un'analisi strutturata che dimostri comprensione del contesto, capacita di approfondimento e creativita pertinente al dominio.
 
 Scenario:
 {input_text}
@@ -192,108 +214,128 @@ Regole:
 - Fai riferimento esplicito a turni specifici della conversazione.
 - Le domande di approfondimento devono essere rilevanti e non scontate.
 """ + MESSAGE_CONTAINER_TEMPLATE % '{ "insights": ["idea concreta 1", "idea concreta 2"], "references_to_context": ["riferimento al turno X"], "follow_up_questions": ["domanda di approfondimento"], "depth": "dominio_scelto" }',
-}
+    }
+
+
+PROMPT_TEMPLATES = _load_yaml_templates()
 
 
 def _extract_expected_schema(expected_output_json: str | None) -> dict:
     if not expected_output_json:
         return {}
     try:
-        return json.loads(expected_output_json)
+        data = json.loads(expected_output_json)
+        if isinstance(data, dict):
+            return data
     except Exception:
-        return {}
+        pass
+    return {}
 
 
 def _build_field_list(expected: dict) -> str:
-    fields = expected.get("schema", {})
-    if not fields:
-        exp = expected.get("expected", {})
-        fields = {k: (type(v).__name__ if v is not None else "string") for k, v in exp.items()} if isinstance(exp, dict) else {}
-    if not fields:
-        exp_fields = expected.get("expected_fields", {})
-        fields = {k: (type(v).__name__ if v is not None else "string") for k, v in exp_fields.items()} if isinstance(exp_fields, dict) else {}
-
-    if expected.get("required_fields"):
-        required = set(expected["required_fields"])
-    else:
-        required = set(fields.keys())
-
-    if not fields:
-        return "  (nessun campo specificato)"
-
-    lines = []
-    for field, ftype in fields.items():
-        marker = " *" if field in required else ""
-        lines.append(f"  - {field}: {ftype}{marker}")
-    return "\n".join(lines)
+    schema = expected.get("schema", {})
+    if schema:
+        return "\n".join(f"  - {k}: {v}" for k, v in schema.items())
+    exp_data = expected.get("expected", expected.get("expected_fields", {}))
+    if isinstance(exp_data, dict):
+        return "\n".join(f"  - {k}" for k in exp_data.keys())
+    return ""
 
 
 def _build_field_placeholders(expected: dict) -> str:
-    fields = expected.get("schema", {})
-    if not fields:
-        exp = expected.get("expected", {})
-        fields = {k: (type(v).__name__ if v is not None else "string") for k, v in exp.items()} if isinstance(exp, dict) else {}
-    if not fields:
-        exp_fields = expected.get("expected_fields", {})
-        fields = {k: (type(v).__name__ if v is not None else "string") for k, v in exp_fields.items()} if isinstance(exp_fields, dict) else {}
-
-    if not fields:
-        return ""
-
-    placeholders = []
-    for field, ftype in fields.items():
-        if ftype in ("number", "integer", "float", "int"):
-            placeholders.append(f'"{field}": 0')
-        elif ftype == "bool":
-            placeholders.append(f'"{field}": false')
-        elif ftype == "date":
-            placeholders.append(f'"{field}": "YYYY-MM-DD"')
-        else:
-            placeholders.append(f'"{field}": "valore"')
-    return ", ".join(placeholders)
+    fields = expected.get("expected", expected.get("expected_fields", {}))
+    if isinstance(fields, dict):
+        return ', '.join(f'"{k}": "..."' for k in fields.keys())
+    return ""
 
 
 def _get_allowed_labels(expected: dict) -> str:
     labels = expected.get("allowed_labels", [])
-    if not labels:
-        expected_labels = expected.get("expected_labels_json", "")
-        if expected_labels:
-            try:
-                labels_data = json.loads(expected_labels) if isinstance(expected_labels, str) else expected_labels
-                labels = labels_data.get("allowed_labels", []) or list(labels_data.values())
-            except Exception:
-                pass
-    if not labels and "expected" in expected:
-        exp = expected["expected"]
-        labels = list(exp.keys()) if isinstance(exp, dict) else []
-
-    if labels:
-        return ", ".join(str(l) for l in labels) + "\nDevi scegliere UNA di queste. Non aggiungere altre etichette."
-    return " (NESSUNA CLASSE SPECIFICATA - IL PROMPT POTREBBE ESSERE INVALIDO)"
+    if isinstance(labels, str):
+        return labels
+    if isinstance(labels, list):
+        return ", ".join(str(l) for l in labels)
+    exp_labels = expected.get("expected_labels", {})
+    if isinstance(exp_labels, dict):
+        vals = list(exp_labels.values())
+        if vals:
+            return ", ".join(str(v) for v in vals)
+    return ""
 
 
 def _get_constraints_text(expected: dict) -> str:
     constraints = expected.get("constraints", [])
-    if not constraints:
-        return "- Non cambiare il comportamento esterno."
-    return "\n".join(f"- {c}" for c in constraints)
+    if isinstance(constraints, list):
+        return "\n".join(f"  - {c}" for c in constraints)
+    return ""
 
 
 def _get_format_constraint(expected: dict) -> str:
-    fmt = expected.get("format", "bullet_list")
+    fmt = expected.get("format", "")
     if fmt == "bullet_list":
-        return "Formato richiesto: elenco puntato."
-    return f"Formato richiesto: {fmt}."
+        return "Formato richiesto: elenco puntato.\n  - Ogni riga del summary deve iniziare con un trattino (-).\n  - I key_points devono essere una lista degli stessi punti."
+    return ""
 
 
 def _get_length_constraint(expected: dict) -> str:
     max_words = expected.get("max_words")
     if max_words:
-        return f"Limite massimo: {max_words} parole."
+        return f"Lunghezza massima: {max_words} parole."
     return ""
 
 
-def validate_prompt(prompt: str, test_type_id: str, expected_output_json: str | None, allowed_source_text: str = "") -> tuple[bool, str, str]:
+def _render_prompt_template(template: str, test_case, test_type, expected: dict) -> str:
+    replacements = {
+        "test_type": test_type.label if test_type else test_case.test_type_id,
+        "instructions": test_case.description or (test_type.label if test_type else test_case.test_type_id),
+        "input_text": test_case.input_text or "",
+        "context": test_case.context_text or "(nessun contesto fornito)",
+        "field_list": _build_field_list(expected),
+        "field_placeholders": _build_field_placeholders(expected),
+        "allowed_labels": _get_allowed_labels(expected),
+        "target": expected.get("target", "migliorare il codice"),
+        "constraints": _get_constraints_text(expected),
+        "format_constraint": _get_format_constraint(expected),
+        "length_constraint": _get_length_constraint(expected),
+        "style": expected.get("style", "descrizione_neutra"),
+        "language": expected.get("language", "it"),
+        "doc_style": expected.get("style", "docstring_google"),
+        "answer_absent_rule": (
+            "IMPORTANTE: se la risposta NON e presente nel contesto, imposta "
+            "answer_absent a true e lascia answer_text vuoto."
+        ) if expected.get("answer_absent") is not None else "",
+    }
+    prompt = template
+    for key, value in replacements.items():
+        prompt = prompt.replace("{" + key + "}", str(value))
+        prompt = prompt.replace("{{ " + key + " }}", str(value))
+        prompt = prompt.replace("{{" + key + "}}", str(value))
+    return prompt
+
+
+def _build_generated_prompt(test_case, test_type) -> str:
+    tid = test_type.id if test_type else test_case.test_type_id
+    template = PROMPT_TEMPLATES.get(tid)
+    if not template:
+        template = PROMPT_TEMPLATES.get("classification")
+        tid = "classification"
+    expected = _extract_expected_schema(test_case.expected_output_json)
+    return _render_prompt_template(template, test_case, test_type, expected)
+
+
+def _build_prompt(test_case, test_type) -> str:
+    expected = _extract_expected_schema(test_case.expected_output_json)
+    if test_case.user_prompt_template and test_case.user_prompt_template.strip():
+        return _render_prompt_template(test_case.user_prompt_template, test_case, test_type, expected)
+    return _build_generated_prompt(test_case, test_type)
+
+
+def validate_prompt(
+    prompt: str,
+    test_type_id: str,
+    expected_output_json: str | None,
+    allowed_source_text: str = "",
+) -> tuple[bool, list[str], str]:
     issues = []
 
     has_container = '{"answer"' in prompt.replace(" ", "") or '"answer":' in prompt
@@ -304,9 +346,21 @@ def validate_prompt(prompt: str, test_type_id: str, expected_output_json: str | 
         if "Classi ammesse" not in prompt:
             issues.append("missing_allowed_labels")
         else:
-            section = prompt.split("Classi ammesse")[1].split("\n\n")[0] if "\n\n" in prompt.split("Classi ammesse")[1] else prompt.split("Classi ammesse")[1]
-            if "NESSUNA CLASSE" in section or "(nessuna classe" in section or len(section.strip()) < 5:
+            rest = prompt.split("Classi ammesse", 1)[1]
+            section = rest.split("\n\n")[0] if "\n\n" in rest else rest
+            label_part = section.split(":", 1)[-1] if ":" in section else section
+            label_text = label_part.strip("() :\n\r\t")
+            if len(label_text) < 3 or "," not in label_text:
                 issues.append("missing_allowed_labels")
+
+    if not prompt.strip():
+        issues.append("empty_prompt")
+
+    if "rispondi esclusivamente con un json" not in prompt.lower():
+        issues.append("missing_json_instruction")
+
+    if "{input_text}" in prompt or "{{input_text}}" in prompt:
+        issues.append("unreplaced_placeholders")
 
     generic_schema_indicators = [
         "Formato atteso: classification_expected",
@@ -332,5 +386,5 @@ def validate_prompt(prompt: str, test_type_id: str, expected_output_json: str | 
         issues.append(f"contamination:{info}")
 
     if issues:
-        return False, "; ".join(issues), "invalid_prompt"
-    return True, "", "valid"
+        return False, issues, "invalid_prompt"
+    return True, [], "valid"

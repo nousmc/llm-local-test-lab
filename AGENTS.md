@@ -35,7 +35,8 @@ Test files also support standalone execution: `python tests/test_benchmark_integ
   - `metrics.py` — Deterministic and heuristic metric calculators.
   - `metric_registry.py` — Registry of all metrics with `evaluation_mode` (deterministic/heuristic/llm), `category`, `legacy_aliases`.
   - `validator.py` — LLM validator client with retry, alternative key mapping, type-specific prompt hints.
-  - `prompt_builder.py` — Prompt templates for 10 test types.
+  - `prompt_builder.py` — Prompt templates for 11 test types (loaded from `config/prompt_templates.yaml`, hardcoded fallback).
+- **`config/prompt_templates.yaml`** — Editable prompt templates for all test types. Change prompts without touching Python.
 - **`app/models.py`** — 11 SQLAlchemy ORM models. ValidationResult has `validator_status`, `validator_error_message`, `validator_raw_response`, `validator_attempts`.
 - **`app/database.py`** — SQLite in WAL mode, `busy_timeout=5000`, retry_commit helper.
 

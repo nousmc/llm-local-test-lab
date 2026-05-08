@@ -1,0 +1,197 @@
+# Prompt templates for each test type.
+# Placeholders: {input_text} {context} {instructions} {allowed_labels}
+#   {field_list} {field_placeholders} {format_constraint} {length_constraint}
+#   {doc_style} {language} {style} {target} {constraints} {answer_absent_rule}
+# The answer_format field is injected into MESSAGE_CONTAINER_TEMPLATE via %s.
+
+classification:
+  body: |
+    Devi classificare il testo nella categoria corretta.
+
+    Classi ammesse (scegline UNA SOLA): {allowed_labels}
+
+    Non usare categorie diverse da quelle elencate.
+    Non aggiungere spiegazioni, restituisci solo la label scelta.
+
+    Input da classificare:
+    {input_text}
+  answer_format: '{ "label": "classe_scelta" }'
+
+data_extraction:
+  body: |
+    Devi estrarre dati strutturati dal testo.
+
+    Campi da estrarre (con tipo):
+    {field_list}
+
+    Regole:
+    - Se un dato non e presente o non e leggibile, usa null per quel campo.
+    - Le date vanno nel formato YYYY-MM-DD.
+    - I numeri vanno senza simboli di valuta o separatori delle migliaia.
+    - I campi testo vanno normalizzati (senza spazi inutili).
+
+    Input da analizzare:
+    {input_text}
+  answer_format: '{ {field_placeholders} }'
+
+rag_qa:
+  body: |
+    Rispondi alla domanda basandoti ESCLUSIVAMENTE sul contesto fornito.
+
+    {answer_absent_rule}
+
+    Regole:
+    - Cita parti del contesto per giustificare la risposta (campo "citations").
+    - Non usare conoscenze esterne al contesto.
+    - Se il contesto non contiene la risposta, imposta "answer_absent": true.
+
+    Domanda:
+    {input_text}
+
+    Contesto:
+    {context}
+  answer_format: '{ "answer_text": "risposta basata sul contesto", "citations_used": ["parte del contesto citata..."], "answer_absent": false }'
+
+summarization:
+  body: |
+    Devi riassumere il testo fornito.
+
+    {format_constraint}
+    {length_constraint}
+
+    Regole:
+    - Non aggiungere informazioni assenti nel testo originale.
+    - Rispetta il formato e la lunghezza richiesti.
+    - Sii conciso e obiettivo.
+
+    Testo da sintetizzare:
+    {input_text}
+  answer_format: '{ "summary": "testo del riassunto", "key_points": ["punto 1", "punto 2"] }'
+
+code_analysis:
+  body: |
+    Analizza il codice fornito e identifica problemi, bug o vulnerabilita.
+
+    Linguaggio: {language}
+
+    Tipo analisi: sicurezza, correttezza, best practice.
+
+    Regole:
+    - Non inventare vulnerabilita o bug non presenti.
+    - Indica la severita solo se motivata dal codice.
+    - Ogni finding deve riferirsi a una riga o costrutto specifico.
+    - Severita ammesse: low, medium, high, critical.
+
+    Codice da analizzare:
+    {input_text}
+  answer_format: '{ "findings": [{ "type": "bug|security|best_practice|performance", "severity": "low|medium|high|critical", "location": "linea o funzione", "description": "descrizione del problema", "recommendation": "come risolvere" }], "overall_assessment": "valutazione complessiva" }'
+
+code_documentation:
+  body: |
+    Scrivi la documentazione per il codice fornito.
+
+    Stile: {doc_style}
+    Lingua: {language}
+
+    Regole:
+    - Documenta solo comportamenti effettivamente presenti nel codice.
+    - Non aggiungere funzionalita non implementate.
+    - Includi parametri, valori restituiti, eccezioni sollevate.
+
+    Codice da documentare:
+    {input_text}
+  answer_format: '{ "docstring": "documentazione completa", "parameters": [{ "name": "nome", "type": "tipo", "description": "descrizione" }], "returns": { "type": "tipo", "description": "descrizione" }, "raises": [{ "exception": "NomeEccezione", "condition": "quando viene sollevata" }], "examples": ["esempio duso"] }'
+
+refactoring:
+  body: |
+    Riscrivi il codice applicando refactoring.
+
+    Obiettivo: {target}
+
+    Vincoli:
+    {constraints}
+
+    Regole:
+    - NON cambiare il comportamento esterno del codice.
+    - NON modificare le signature pubbliche.
+    - NON introdurre dipendenze esterne.
+
+    Codice da rifattorizzare:
+    {input_text}
+  answer_format: '{ "refactored_code": "codice rifattorizzato", "changes_summary": ["cambio 1", "cambio 2"], "preserved_behavior": true }'
+
+image_description:
+  body: |
+    Descrivi l'immagine in modo neutro e oggettivo.
+
+    Stile: {style}
+    {length_constraint}
+
+    Regole:
+    - Descrivi solo oggetti visibili nell'immagine.
+    - Non indicare oggetti assenti o solo probabili.
+    - Non interpretare emozioni o intenzioni di persone.
+
+    {input_text}
+  answer_format: '{ "description": "descrizione oggettiva dellimmagine", "objects_detected": ["oggetto 1", "oggetto 2"], "scene_type": "tipo di scena", "dominant_colors": ["colore 1"] }'
+
+ocr_extraction:
+  body: |
+    Estrai i dati dal documento OCR.
+
+    Campi da estrarre:
+    {field_list}
+
+    Regole:
+    - Se un campo non e leggibile o assente, usa null.
+    - Testo: normalizza spazi e maiuscole/minuscole.
+    - Date: formato YYYY-MM-DD.
+    - Numeri: senza simboli, punto decimale.
+
+    Documento da analizzare:
+    {input_text}
+  answer_format: '{ {field_placeholders} }'
+
+speech_to_text_postprocess:
+  body: |
+    Pulisci e struttura la trascrizione grezza.
+
+    Trasformazione richiesta:
+    - Rimuovi riempitivi (emh, ehm, ecc).
+    - Correggi errori di trascrizione evidenti.
+    - Estrai action items, owner e task espliciti.
+    - Estrai date e deadline menzionate.
+
+    Regole:
+    - Non aggiungere decisioni o task non menzionati.
+    - Se un owner non e specificato, usa null.
+    - Se una deadline non e specificata, usa null.
+
+    Trascrizione grezza:
+    {input_text}
+  answer_format: '{ "clean_transcript": "trascrizione pulita", "action_items": [{ "owner": "nome o null", "task": "task da fare", "deadline": "data o null" }], "entities_mentioned": [{ "name": "nome entita", "type": "person|date|project|other" }] }'
+
+contextual_insight:
+  body: |
+    Analizza la conversazione multi-turno e produci un'analisi strutturata che dimostri comprensione del contesto, capacita di approfondimento e creativita pertinente al dominio.
+
+    Scenario:
+    {input_text}
+
+    Contesto aggiuntivo:
+    {context}
+
+    Istruzioni: {instructions}
+
+    Produci un'analisi con:
+    - insights: lista di idee/strategie concrete (minimo 3, massimo 8)
+    - references_to_context: riferimenti specifici ai turni della conversazione
+    - follow_up_questions: domande di approfondimento pertinenti
+    - depth: il dominio di riferimento della tua analisi
+
+    Regole:
+    - Ogni insight deve essere concreto e pertinente al dominio.
+    - Non proporre idee generiche o ovvie.
+    - Fai riferimento esplicito a turni specifici della conversazione.
+    - Le domande di approfondimento devono essere rilevanti e non scontate.
+  answer_format: '{ "insights": ["idea concreta 1", "idea concreta 2"], "references_to_context": ["riferimento al turno X"], "follow_up_questions": ["domanda di approfondimento"], "depth": "dominio_scelto" }'

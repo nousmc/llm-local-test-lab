@@ -158,6 +158,26 @@ def _sync_config_to_db():
                     default_params_json=json.dumps(m.get("default_params", {})),
                 )
                 db.add(model)
+        else:
+            existing_model_ids = {row[0] for row in db.query(ConfiguredModel.id).all()}
+            models_cfg = get_models_from_config()
+            for m in models_cfg:
+                if m["id"] not in existing_model_ids:
+                    model = ConfiguredModel(
+                        id=m["id"],
+                        label=m.get("label", m["id"]),
+                        provider=m.get("provider", "ollama"),
+                        model_name=m.get("model", m["id"]),
+                        enabled=m.get("enabled", True),
+                        family=m.get("family"),
+                        size_b=m.get("size_b"),
+                        context_window=m.get("context_window"),
+                        supports_vision=m.get("supports_vision", False),
+                        supports_json=m.get("supports_json", False),
+                        default_params_json=json.dumps(m.get("default_params", {})),
+                    )
+                    db.add(model)
+                    print(f"Migration: added missing model {m['id']}")
 
         # Sync test types — seed only if table is empty
         if existing_types == 0:
@@ -171,6 +191,20 @@ def _sync_config_to_db():
                     enabled=True,
                 )
                 db.add(ttype)
+        else:
+            existing_ids = {row[0] for row in db.query(TestType.id).all()}
+            test_types_cfg = get_test_types_from_config()
+            for tt in test_types_cfg:
+                if tt["id"] not in existing_ids:
+                    ttype = TestType(
+                        id=tt["id"],
+                        label=tt.get("label", tt["id"]),
+                        description=tt.get("description"),
+                        expected_schema=tt.get("expected_schema"),
+                        enabled=True,
+                    )
+                    db.add(ttype)
+                    print(f"Migration: added missing test type {tt['id']}")
 
         db.commit()
         provider_count = db.query(ProviderConfig).count()

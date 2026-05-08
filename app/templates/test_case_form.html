@@ -90,7 +90,7 @@
     </div>
     <div class="form-group">
         <label>Prompt inviato al modello / template del test case</label>
-        <textarea name="user_prompt_template" rows="3"></textarea>
+         <textarea name="user_prompt_template" rows="3">{{ default_template or '' | e }}</textarea>
     </div>
     <div class="form-group">
         <label>Risultato atteso (JSON)</label>

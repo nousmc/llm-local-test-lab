@@ -43,10 +43,17 @@ async def test_case_list(request: Request, db: Session = Depends(get_db)):
 @router.get("/new", response_class=HTMLResponse)
 async def test_case_new(request: Request, db: Session = Depends(get_db)):
     test_types = db.query(TestType).all()
+    default_template = ""
+    test_type_id = request.query_params.get("test_type_id", "")
+    if test_type_id:
+        from ..services.prompt_builder import PROMPT_TEMPLATES, ST_HEADER, MESSAGE_CONTAINER_TEMPLATE
+        template = PROMPT_TEMPLATES.get(test_type_id, PROMPT_TEMPLATES.get("classification"))
+        if template:
+            default_template = template
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="test_case_form.html",
-        context={"request": request, "test_types": test_types, "lib_groups": {}, "test_cases": [], "mode": "create", "tc": None},
+        context={"request": request, "test_types": test_types, "lib_groups": {}, "test_cases": [], "mode": "create", "tc": None, "default_template": default_template},
     )
 
 
@@ -135,6 +142,13 @@ async def test_case_edit(id: int, request: Request, db: Session = Depends(get_db
     if not tc:
         return RedirectResponse(url="/test-cases")
     test_types = db.query(TestType).all()
+    if not tc.user_prompt_template or not tc.user_prompt_template.strip():
+        try:
+            from ..services.test_runner import _build_prompt
+            tt = db.query(TestType).filter(TestType.id == tc.test_type_id).first()
+            tc.user_prompt_template = _build_prompt(tc, tt)
+        except Exception:
+            pass
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="test_case_form.html",
