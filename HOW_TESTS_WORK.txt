@@ -263,6 +263,73 @@ La valutazione avviene in 4 fasi:
   5. ANALISI: Dashboard, dettaglio run, report, export CSV/JSON
 
 
+7-bis. BENCHMARK MODE (NUOVO)
+-------------------------------
+
+  Attivando il checkbox "Modalita' Benchmark" nella creazione run,
+  il sistema esegue TEST MULTI-TEMPERATURA CON RIPETIZIONI.
+
+  FLUSSO DI ESECUZIONE:
+    for each model:
+      T_min, T_mid, T_max (configurabili per modello)
+        for each test_case:
+          for each repetition (repeat_count globale):
+            run_full_test(model, tc, temperature=T, repetition_index=rep)
+
+  Esempio: 2 modelli x 3 temperature x 10 test case x 3 ripetizioni
+           = 180 esecuzioni complete.
+
+  Ogni esecuzione e' un test completo (prompt -> provider -> metriche ->
+  validatore -> scoring). Il TestResult registra temperature_used e
+  repetition_index.
+
+  DATI SALVATI:
+    - TestResult.temperature_used: temperatura usata in questa esecuzione
+    - TestResult.repetition_index: indice di ripetizione (0-based)
+    - TestRun.benchmark_config_json: {enabled, repeat_count,
+                                       model_temperatures: {model_id: [t1,t2,t3]}}
+
+  STATISTICHE (benchmark_stats.py):
+    Per ogni (modello, temperatura, tipologia) vengono calcolati:
+      - mean_score, min_score, max_score, std_dev
+
+    TEMPERATURA OTTIMALE PER TIPOLOGIA:
+      Per ogni coppia (modello, tipologia_test), la temperatura con lo
+      score medio piu' alto viene selezionata come "ottimale".
+      A parita' di score, si sceglie la temperatura piu' bassa.
+
+    FORMULA DI RANKING:
+      ranking_score(modello) = media su tutte le tipologie di:
+        mean_score(modello, tipologia, temperatura_ottimale_per_tipo)
+
+    Esempio:
+      Qwen 3.6 @ classification: T=0.1 score=0.92, T=0.5 score=0.88,
+                                 T=0.9 score=0.81 → T ottimale = 0.1
+      Qwen 3.6 @ summarization: T=0.1 score=0.70, T=0.5 score=0.78,
+                                 T=0.9 score=0.72 → T ottimale = 0.5
+      Ranking score = (0.92 + 0.78) / 2 = 0.85
+
+  CONFIGURAZIONE:
+    config.yaml:
+      benchmark_defaults:
+        repeat_count: 3           # uguale per tutti i modelli
+        temperature_min: 0.1      # fallback, sovrascrivibile per modello
+        temperature_mid: 0.5
+        temperature_max: 0.9
+
+    Ogni modello ha temperature benchmark configurabili in
+    /models/{id}/edit (campi benchmark_temp_min/mid/max).
+
+  UI IN TEMPO REALE:
+    Durante l'esecuzione, polling su /test-runs/{id}/status ogni 3s:
+      - Stat card aggiornate (totale, completati, falliti, score, latenza)
+      - Progress bar
+      - Grafici ridisegnati con dati parziali
+      - Tabella risultati ricostruita ogni poll
+
+    A completamento: location.reload() con tutti i dati finali.
+
+
 8. I GRAFICI E IL LORO SIGNIFICATO
 -----------------------------------
 
@@ -276,8 +343,20 @@ La valutazione avviene in 4 fasi:
     - Score medio per modello, per tipologia, per dominio
     - Confronto tra modelli per tipologia e per dominio
     - Tabella risultati con score, latenza, errori
+      (colonne T° e Rep visibili in benchmark mode)
     - Executive report narrativo
     - Validator status e final_score_mode per ogni risultato
+
+  BENCHMARK PANEL (nuovo):
+    - Classifica modelli: ranking basato su score medio per tipo
+      con la temperatura ottimale di ciascuna tipologia
+    - Temperatura ottimale per tipologia: tabella con T ottimale,
+      score medio, deviazione standard per ogni (modello, tipo)
+    - Dettaglio globale per temperatura: mean, min, max, std dev
+      per ogni temperatura di ogni modello (tutti i test aggregati)
+    - Grafico miglior modello: barre per categoria, ogni barra
+      usa la T ottimale specifica per quel tipo. Tooltip mostra
+      T e deviazione standard.
 
   REPORT:
     - Score medio e pass rate per libreria

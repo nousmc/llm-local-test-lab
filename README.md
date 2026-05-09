@@ -1,6 +1,6 @@
 # LLM Local Test Lab
 
-Piattaforma di benchmark per modelli LLM locali (Ollama) e remoti (OpenRouter). Permette di creare, eseguire e analizzare test strutturati su 10 tipologie tecniche, organizzati in 15 domini applicativi, con validazione automatica tramite modello giudice e reportistica completa.
+**v0.1.3** — Piattaforma di benchmark per modelli LLM locali (Ollama) e remoti (OpenRouter). Permette di creare, eseguire e analizzare test strutturati su 11 tipologie tecniche, organizzati in 19 domini applicativi, con validazione automatica tramite modello giudice, **benchmark multi-temperatura con ripetizioni**, e reportistica completa.
 
 ---
 
@@ -207,6 +207,38 @@ Analizza conversazioni multi-turno producendo insight strutturati in domini spec
 4. Clicca **Crea Run**, poi **Avvia Run**
 5. La run esegue i test in parallelo (configurabile, default 4)
 
+### Benchmark Mode (nuovo)
+Attiva il checkbox **Modalità Benchmark** nella creazione run per:
+- **Ripetizioni multiple**: ogni test eseguito N volte (default 3)
+- **3 temperature per modello**: min, mid, max configurabili per ogni singolo modello
+- **Statistiche complete**: mean, min, max, deviazione standard per temperatura
+- **Temperatura ottimale**: calcolata automaticamente PER TIPOLOGIA di test
+- **Ranking**: score basato sulla media delle T ottimali per tipo
+
+**Flusso benchmark:**
+```
+per ogni modello:
+  T_min → ogni test case × N ripetizioni
+  T_mid → ogni test case × N ripetizioni
+  T_max → ogni test case × N ripetizioni
+```
+Esempio: 2 modelli × 3 temp × 10 test × 3 rep = 180 esecuzioni totali.
+
+**Dati salvati per ogni run benchmark:**
+- `temperature_used`, `repetition_index` su ogni `TestResult`
+- `TestRun.benchmark_config_json` con `{enabled, repeat_count, model_temperatures}`
+
+**Configurazione:**
+```yaml
+# config.yaml
+benchmark_defaults:
+  repeat_count: 3
+  temperature_min: 0.1
+  temperature_mid: 0.5
+  temperature_max: 0.9
+```
+Temperature per modello modificabili da `/models/{id}/edit`.
+
 ### Analizzare i risultati
 - **Dashboard**: score medio globale, miglior modello, error rate, latenza
 - **Dettaglio run**: grafici per modello/dominio/tipologia; executive report; validator status
@@ -258,9 +290,16 @@ Ogni tipologia ha una formula deterministica specifica. Il final_score pesa dete
 ### Dettaglio run
 - Score medio per modello / tipologia / dominio
 - Confronto tra modelli per tipologia e per dominio
-- Tabella risultati
-- Executive report generato dal validatore
+- Tabella risultati (con colonne T° e Rep in benchmark mode)
+- Executive report generato dal validatore (o fallback automatico)
+- **Refresh in tempo reale**: polling `/status` ogni 3s, stats/charts/tabella live
 - Per ogni risultato: validator_status, error_message, final_score_mode
+
+### Benchmark Panel
+- Classifica modelli (ranking basato su T ottimale per tipologia)
+- Temperatura ottimale per tipologia di test
+- Dettaglio globale per temperatura (mean, min, max, std dev)
+- Grafico miglior modello: score per categoria con T specifica per tipo
 
 ### Dettaglio risultato
 - Prompt inviato, risposta modello, JSON estratto
