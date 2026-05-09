@@ -49,6 +49,9 @@ async def model_create(
     temperature: str = Form("0.0"),
     top_p: str = Form("0.9"),
     max_tokens: str = Form("1024"),
+    benchmark_temp_min: str = Form(""),
+    benchmark_temp_mid: str = Form(""),
+    benchmark_temp_max: str = Form(""),
     db: Session = Depends(get_db),
 ):
     existing = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
@@ -69,6 +72,9 @@ async def model_create(
         supports_vision=supports_vision == "true",
         supports_json=supports_json == "true",
         default_params_json=json.dumps(params),
+        benchmark_temp_min=float(benchmark_temp_min) if benchmark_temp_min.strip() else None,
+        benchmark_temp_mid=float(benchmark_temp_mid) if benchmark_temp_mid.strip() else None,
+        benchmark_temp_max=float(benchmark_temp_max) if benchmark_temp_max.strip() else None,
     )
     db.add(model)
     db.commit()
@@ -105,6 +111,9 @@ async def model_update(
     temperature: str = Form("0.0"),
     top_p: str = Form("0.9"),
     max_tokens: str = Form("1024"),
+    benchmark_temp_min: str = Form(""),
+    benchmark_temp_mid: str = Form(""),
+    benchmark_temp_max: str = Form(""),
     db: Session = Depends(get_db),
 ):
     model = db.query(ConfiguredModel).filter(ConfiguredModel.id == model_id).first()
@@ -129,6 +138,9 @@ async def model_update(
     model.supports_vision = supports_vision == "true"
     model.supports_json = supports_json == "true"
     model.default_params_json = json.dumps(params)
+    model.benchmark_temp_min = float(benchmark_temp_min) if benchmark_temp_min.strip() else None
+    model.benchmark_temp_mid = float(benchmark_temp_mid) if benchmark_temp_mid.strip() else None
+    model.benchmark_temp_max = float(benchmark_temp_max) if benchmark_temp_max.strip() else None
     model.updated_at = datetime.now(timezone.utc)
     db.commit()
     return RedirectResponse(url="/models", status_code=303)

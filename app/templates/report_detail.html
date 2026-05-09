@@ -8,7 +8,7 @@
 {% if reports %}
 <table>
     <thead>
-        <tr><th>Run ID</th><th>Titolo</th><th>Data</th><th>Azioni</th></tr>
+        <tr><th>Run ID</th><th>Titolo</th><th>Data <a href="#" onclick="sortTable(this,0)" title="Ordina">&#8645;</a></th><th>Azioni</th></tr>
     </thead>
     <tbody>
         {% for item in reports %}
@@ -34,7 +34,7 @@
 {% if runs_without_reports %}
 <table>
     <thead>
-        <tr><th>ID</th><th>Nome</th><th>Stato</th><th>Azioni</th></tr>
+        <tr><th>ID</th><th>Nome</th><th>Stato</th><th>Completata <a href="#" onclick="sortTable(this,1)" title="Ordina">&#8645;</a></th><th>Azioni</th></tr>
     </thead>
     <tbody>
         {% for run in runs_without_reports %}
@@ -42,6 +42,7 @@
             <td>{{ run.id }}</td>
             <td>{{ run.name | e }}</td>
             <td>{{ run.status | e }}</td>
+            <td>{{ run.completed_at or run.created_at }}</td>
             <td>
                 <form method="post" action="/reports/{{ run.id }}/generate" style="display:inline">
                     <button type="submit" class="btn-small">Genera Report</button>
@@ -54,6 +55,23 @@
 {% else %}
 <p>Tutte le run completate hanno report.</p>
 {% endif %}
+
+<script>
+function sortTable(link, colIdx) {
+    var table = link.closest('table');
+    var tbody = table.querySelector('tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    var ascending = link.dataset.asc !== 'true';
+    link.dataset.asc = ascending;
+    link.textContent = ascending ? '\u25B2' : '\u25BC';
+    rows.sort(function(a, b) {
+        var aVal = a.cells[colIdx].textContent.trim();
+        var bVal = b.cells[colIdx].textContent.trim();
+        return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    rows.forEach(function(r) { tbody.appendChild(r); });
+}
+</script>
 
 {% elif mode == 'missing' %}
 <div class="warning">
@@ -74,6 +92,43 @@
     <h2>Executive Report</h2>
     <div style="white-space:pre-wrap;font-size:14px;line-height:1.6">{{ run.executive_report_text | e }}</div>
     <p style="font-size:11px;color:#888;margin-top:8px">Generato automaticamente dal validatore analizzando i risultati.</p>
+</div>
+{% endif %}
+
+{% if is_benchmark and benchmark_stats and benchmark_stats.has_benchmark_data %}
+<div class="config-section" style="margin-bottom:20px">
+    <h2>Benchmark — Risultati multi-temperatura</h2>
+    <h3>Classifica modelli</h3>
+    <p style="font-size:12px;color:#777;margin:0 0 10px 0">Score medio per tipologia usando la temperatura ottimale per tipo.</p>
+    <table>
+        <thead><tr><th>#</th><th>Modello</th><th>Score medio</th></tr></thead>
+        <tbody>
+            {% for entry in benchmark_stats.ranking %}
+            <tr{% if loop.first %} style="background:#e8f5e9;font-weight:bold"{% endif %}>
+                <td>{{ entry.rank }}</td><td>{{ entry.model_label | e }}</td><td><strong>{{ entry.mean_score }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <h3>Temperatura ottimale per tipologia</h3>
+    {% for mid, type_opts in benchmark_stats.model_per_type_optimal.items() %}
+    <h4>{{ benchmark_stats.model_labels.get(mid, mid) | e }}</h4>
+    <table>
+        <thead><tr><th>Tipologia</th><th>T ott</th><th>Score</th><th>Dev.Std</th></tr></thead>
+        <tbody>
+            {% for ttype, opt in type_opts.items() %}
+            <tr><td>{{ ttype | e }}</td><td><strong>{{ opt.temperature }}</strong></td><td>{{ opt.mean_score }}</td><td>{{ opt.std_dev }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+    {% if benchmark_chart_raw and benchmark_chart_raw.categories %}
+    <div class="charts-row"><div class="chart-container" style="grid-column:1/-1">
+        <h3>Miglior modello: {{ benchmark_chart_raw.best_model_label | e }}</h3>
+        <canvas id="chart-bench-best"></canvas>
+        <p class="chart-desc">Score per tipologia usando la temperatura ottimale specifica per ogni tipo.</p>
+    </div></div>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -159,6 +214,32 @@ try {
         makeBarChart('chart-r-pass', charts.model_scores.labels, charts.model_scores.pass_rates, 'Pass Rate %', 'rgba(54,162,235,0.7)');
     }
 } catch(e) {}
+{% if is_benchmark and benchmark_chart_raw and benchmark_chart_raw.categories %}
+try {
+    var benchChart = JSON.parse('{{ benchmark_chart | safe }}');
+    document.addEventListener('DOMContentLoaded', function() {
+        if (benchChart.categories && benchChart.categories.length > 0) {
+            var ctx = document.getElementById('chart-bench-best').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: benchChart.categories,
+                    datasets: [{label:'Score',data:benchChart.category_scores,backgroundColor:'rgba(34,139,34,0.7)',borderColor:'rgba(34,139,34,1)',borderWidth:1}]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true, max: 1.1 } },
+                    plugins: { tooltip: { callbacks: { afterLabel: function(ctx) {
+                        var t = benchChart.category_temps ? benchChart.category_temps[ctx.dataIndex] : '?';
+                        var s = benchChart.category_std_dev ? benchChart.category_std_dev[ctx.dataIndex] : '?';
+                        return 'T: ' + t + '  |  Dev.Std: \u00b1' + s;
+                    }}}}
+                }
+            });
+        }
+    });
+} catch(e) {}
+{% endif %}
 </script>
 
 {% endif %}

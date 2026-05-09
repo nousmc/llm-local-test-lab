@@ -10,6 +10,7 @@ DEFAULT_CONFIG = {
     "models": [],
     "validator": {"enabled": False},
     "execution": {"parallelism": 2, "retry_attempts": 2, "retry_backoff_seconds": 3},
+    "benchmark_defaults": {"repeat_count": 3, "temperature_min": 0.1, "temperature_mid": 0.5, "temperature_max": 0.9},
     "metrics": {"enabled": []},
     "test_types": [],
     "thresholds": {"default_pass_score": 0.80, "json_validity_required": True, "max_latency_ms_warning": 30000},
@@ -77,6 +78,11 @@ def get_provider_config(provider: str) -> dict:
 def get_metrics_config() -> dict:
     config = load_config()
     return config.get("metrics", {})
+
+
+def get_benchmark_defaults() -> dict:
+    config = load_config()
+    return config.get("benchmark_defaults", {})
 
 
 def get_thresholds_config() -> dict:

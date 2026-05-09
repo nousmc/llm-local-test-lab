@@ -1,6 +1,9 @@
 function makeBarChart(canvasId, labels, data, label, color) {
-    var ctx = document.getElementById(canvasId);
-    if (!ctx) return;
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+    var ctx = canvas.getContext('2d');
     new Chart(ctx, {
         type: 'bar',
         data: {
@@ -31,8 +34,11 @@ function makeBarChart(canvasId, labels, data, label, color) {
 }
 
 function makeGroupedBarChart(canvasId, labels, datasets) {
-    var ctx = document.getElementById(canvasId);
-    if (!ctx) return;
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+    var ctx = canvas.getContext('2d');
     new Chart(ctx, {
         type: 'bar',
         data: {
@@ -59,8 +65,11 @@ function makeGroupedBarChart(canvasId, labels, datasets) {
 }
 
 function makePieChart(canvasId, labels, data, label) {
-    var ctx = document.getElementById(canvasId);
-    if (!ctx) return;
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+    var ctx = canvas.getContext('2d');
     new Chart(ctx, {
         type: 'pie',
         data: {

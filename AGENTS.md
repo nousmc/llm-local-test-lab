@@ -21,28 +21,118 @@ Test files also support standalone execution: `python tests/test_benchmark_integ
 
 ## Config & secrets
 
-- **Config:** `config/config.yaml` — defines providers, models, validator, execution params, test types, thresholds.
+- **Config:** `config/config.yaml` — defines providers, models, validator, execution params, test types, thresholds, benchmark defaults.
 - **Secrets:** `secrets/secret.key` (gitignored, `KEY=VALUE` lines). Required keys: `OPENROUTER_API_KEY`, `OLLAMA_API_KEY`, `APP_SECRET_KEY`.
 - Secrets are loaded from file, encrypted (XOR+B64), and stored in the DB. Never exposed in UI.
 - Environment overrides: Pydantic `Settings` reads env vars with `LLM_` prefix.
 
 ## Architecture
 
-- **`app/main.py`** — FastAPI entrypoint, startup event, config→DB sync, seed data, migration helpers.
+- **`app/main.py`** — FastAPI entrypoint, startup event, config→DB sync, seed data, migration helpers for new columns.
 - **`app/routers/`** — Thin HTTP handlers (12 routers). Web UI uses Jinja2; JSON API in `api.py`.
 - **`app/services/`** — All business logic. Key files:
-  - `test_runner.py` — Test execution, deterministic scoring, final scoring with protection rules, pass/fail logic.
+  - `test_runner.py` — Test execution, deterministic scoring, final scoring with protection rules, pass/fail logic. **Benchmark mode**: triple-loop (models × temperatures × test cases × repetitions), temperature override, per-model temperature config.
+  - `benchmark_stats.py` — Benchmark statistics: per-type optimal temperature detection, mean/min/max/std_dev per temperature, ranking formula, chart data builder.
   - `metrics.py` — Deterministic and heuristic metric calculators.
   - `metric_registry.py` — Registry of all metrics with `evaluation_mode` (deterministic/heuristic/llm), `category`, `legacy_aliases`.
   - `validator.py` — LLM validator client with retry, alternative key mapping, type-specific prompt hints.
   - `prompt_builder.py` — Prompt templates for 11 test types (loaded from `config/prompt_templates.yaml`, hardcoded fallback).
+  - `report_builder.py` — Executive report generation (LLM-powered + automatic fallback), benchmark-aware with ranking and per-type optimal temperatures.
+  - `chart_builder.py` — Chart.js data builder for dashboard and run detail views.
+  - `config_loader.py` — YAML config loading with defaults, `get_benchmark_defaults()`.
 - **`config/prompt_templates.yaml`** — Editable prompt templates for all test types. Change prompts without touching Python.
-- **`app/models.py`** — 11 SQLAlchemy ORM models. ValidationResult has `validator_status`, `validator_error_message`, `validator_raw_response`, `validator_attempts`.
+- **`app/models.py`** — SQLAlchemy ORM models (12 tables). Key benchmark columns:
+  - `ConfiguredModel.benchmark_temp_min/mid/max` — per-model default benchmark temperatures.
+  - `TestRun.benchmark_config_json` — stores `{enabled, repeat_count, model_temperatures: {id: [t1,t2,t3]}}`.
+  - `TestResult.temperature_used` / `TestResult.repetition_index` — per-execution benchmark metadata.
+  - `ValidationResult` has `validator_status`, `validator_error_message`, `validator_raw_response`, `validator_attempts`.
 - **`app/database.py`** — SQLite in WAL mode, `busy_timeout=5000`, retry_commit helper.
+
+## Benchmark mode
+
+Activated via checkbox on `/test-runs/new`. Global `repeat_count`, per-model 3 temperatures.
+
+### Flow
+
+```
+for model in models:
+  temperatures = [t_min, t_mid, t_max]  ← per-model from benchmark_config_json
+  for temperature in temperatures:
+    for test_case in test_cases:
+      for repetition in range(repeat_count):
+        _run_single_test(model, tc, temperature_override=t, repetition_index=rep)
+```
+
+Each execution is a full test (prompt → provider → metrics → validator → scoring). `TestResult.temperature_used` and `TestResult.repetition_index` are stored.
+
+### Statistics (`benchmark_stats.py`)
+
+- **Optimal temperature per test type**: `argmax_temp(mean_score(model, type, temp))`, tie-break by lower temp.
+- **Ranking**: `mean(mean_score(model, type, optimal_temp_for_type))` across all types.
+- **Std dev** computed per (model, temperature, type) group.
+- **Chart**: best model only, per-category bars at each type's optimal temperature.
+
+### Ranking formula
+
+```
+ranking_score(model) = 1/|types| * Σ mean_score(model, t, optimal_temp(model, t))
+```
+
+### UI
+
+- Family-grouped model cards with inline temperature inputs (min/mid/max).
+- Real-time polling during execution: stats, charts, results table update every 3s via `/test-runs/{id}/status`.
+- At completion: `window.location.reload()` renders final charts, executive report, benchmark stats panel.
+- Benchmark panel shows: ranking table, per-type optimal temperatures, global per-temp detail, best-model chart.
+- Results table shows `T°` and `Rep` columns only in benchmark mode.
+
+### Config
+
+`config.yaml`:
+```yaml
+benchmark_defaults:
+  repeat_count: 3
+  temperature_min: 0.1
+  temperature_mid: 0.5
+  temperature_max: 0.9
+```
+
+Per-model defaults stored in `ConfiguredModel.benchmark_temp_min/mid/max`, editable via `/models/{id}/edit`.
+
+## Available `/status` endpoint
+
+`GET /test-runs/{id}/status` returns JSON:
+```json
+{
+  "run_id": 42, "status": "running|completed|failed",
+  "total": 180, "completed": 150, "failed": 5,
+  "avg_score": 0.83, "avg_latency": 1234.5,
+  "chart_data": {...},           ← always present (build_run_charts)
+  "results": [{...}],             ← always present (all TestResult rows)
+  "executive_report": "...",     ← only when completed/failed
+  "benchmark_stats": {...},      ← only when completed/failed + benchmark
+  "benchmark_chart": {...}       ← only when completed/failed + benchmark
+}
+```
+
+## Model routes with slash in ID
+
+Model IDs can contain `/` (e.g. `deepseek/deepseek-v4-pro`). All model routes in `app/routers/models.py` use `{model_id:path}` converter. Route list:
+- `GET /models/{model_id:path}/edit`
+- `POST /models/{model_id:path}/update`
+- `POST /models/{model_id:path}/delete`
+- `POST /models/{model_id:path}/enable`
+- `POST /models/{model_id:path}/disable`
+- `POST /models/{model_id:path}/probe`
 
 ## Startup seeding
 
-Idempotent: tables are seeded **only if empty**. Also runs migration helpers and `backfill_test_case_prompt_templates()`.
+Idempotent: tables are seeded **only if empty**. Also runs migration helpers:
+- `_migrate_validation_result_columns(db)` — adds validator_status, validator_error_message, etc.
+- `_migrate_benchmark_columns(db)` — adds benchmark_config_json, temperature_used, repetition_index, benchmark_temp_min/mid/max.
+- `backfill_test_case_prompt_templates()`.
+
+Migrations run **before** any ORM queries (at top of `_sync_config_to_db`). Existing models with NULL benchmark temps get backfilled with defaults from `config.yaml`.
 
 To reset state: stop app, delete `data/app.db`, restart.
 
@@ -107,6 +197,13 @@ Type-specific guidance appended to validator prompt:
 - **code_analysis**: LLM metrics fields (finding_accuracy, invented_bug_count, etc.)
 - **speech_to_text_postprocess**: "Se formato corretto, semantic_score >= 0.7. MAI score 0 se task eseguito."
 - **rag_qa**: "completeness misura fatti presenti nella risposta. N fatti richiesti e tutti presenti → completeness=1.0."
+
+## Frontend
+
+- **Templates**: Jinja2 in `app/templates/`, base layout in `base.html` with sidebar navigation.
+- **CSS**: `app/static/css/app.css` — cached with `?v=3` query param. Includes styles for family panels (model grouping), benchmark cards, inline temperature fields, form sections.
+- **Charts**: Chart.js v4 via CDN, chart functions in `app/static/js/charts.js`. Chart instances destroyed before re-creation (`Chart.getChart(canvas).destroy()`).
+- **Auto-refresh**: During running tests, JS polls `/test-runs/{id}/status` every 3s. Updates stats, progress bar, charts, and results table in real-time. Single `location.reload()` on completion.
 
 ## No tooling
 

@@ -91,6 +91,9 @@ def _sync_config_to_db():
 
         config = load_config()
 
+        _migrate_validation_result_columns(db)
+        _migrate_benchmark_columns(db)
+
         existing_providers = db.query(ProviderConfig).count()
         existing_validators = db.query(ValidatorConfig).count()
         existing_models = db.query(ConfiguredModel).count()
@@ -141,6 +144,7 @@ def _sync_config_to_db():
                 db.add(vc)
 
         # Sync models — seed only if table is empty (first run)
+        bm_defaults = config.get("benchmark_defaults", {})
         if existing_models == 0:
             models_cfg = get_models_from_config()
             for m in models_cfg:
@@ -156,6 +160,9 @@ def _sync_config_to_db():
                     supports_vision=m.get("supports_vision", False),
                     supports_json=m.get("supports_json", False),
                     default_params_json=json.dumps(m.get("default_params", {})),
+                    benchmark_temp_min=float(m.get("benchmark_temp_min", bm_defaults.get("temperature_min", 0.1))),
+                    benchmark_temp_mid=float(m.get("benchmark_temp_mid", bm_defaults.get("temperature_mid", 0.5))),
+                    benchmark_temp_max=float(m.get("benchmark_temp_max", bm_defaults.get("temperature_max", 0.9))),
                 )
                 db.add(model)
         else:
@@ -175,9 +182,24 @@ def _sync_config_to_db():
                         supports_vision=m.get("supports_vision", False),
                         supports_json=m.get("supports_json", False),
                         default_params_json=json.dumps(m.get("default_params", {})),
+                        benchmark_temp_min=float(m.get("benchmark_temp_min", bm_defaults.get("temperature_min", 0.1))),
+                        benchmark_temp_mid=float(m.get("benchmark_temp_mid", bm_defaults.get("temperature_mid", 0.5))),
+                        benchmark_temp_max=float(m.get("benchmark_temp_max", bm_defaults.get("temperature_max", 0.9))),
                     )
                     db.add(model)
                     print(f"Migration: added missing model {m['id']}")
+
+            # Backfill benchmark temps for existing models that have NULL values
+            models_with_null_temps = db.query(ConfiguredModel).filter(
+                ConfiguredModel.benchmark_temp_min.is_(None)
+            ).all()
+            for m in models_with_null_temps:
+                m.benchmark_temp_min = float(bm_defaults.get("temperature_min", 0.1))
+                m.benchmark_temp_mid = float(bm_defaults.get("temperature_mid", 0.5))
+                m.benchmark_temp_max = float(bm_defaults.get("temperature_max", 0.9))
+            if models_with_null_temps:
+                db.commit()
+                print(f"Backfilled benchmark temps for {len(models_with_null_temps)} existing models")
 
         # Sync test types — seed only if table is empty
         if existing_types == 0:
@@ -236,8 +258,6 @@ def _sync_config_to_db():
         if academy_migrated > 0:
             db.commit()
 
-        _migrate_validation_result_columns(db)
-
         from .services.prompt_backfill import backfill_test_case_prompt_templates
         prompts_backfilled = backfill_test_case_prompt_templates(db)
 
@@ -280,6 +300,36 @@ def _migrate_validation_result_columns(db):
     except Exception as e:
         db.rollback()
         print(f"Migration warning (validation_result columns): {e}")
+
+
+def _migrate_benchmark_columns(db):
+    from sqlalchemy import text
+    try:
+        columns_tr = db.execute(text("PRAGMA table_info(test_runs)")).fetchall()
+        col_names_tr = [c[1] for c in columns_tr]
+        if "benchmark_config_json" not in col_names_tr:
+            db.execute(text("ALTER TABLE test_runs ADD COLUMN benchmark_config_json TEXT DEFAULT '{}'"))
+            print("Migration: added column test_runs.benchmark_config_json")
+
+        columns_res = db.execute(text("PRAGMA table_info(test_results)")).fetchall()
+        col_names_res = [c[1] for c in columns_res]
+        if "temperature_used" not in col_names_res:
+            db.execute(text("ALTER TABLE test_results ADD COLUMN temperature_used FLOAT"))
+            print("Migration: added column test_results.temperature_used")
+        if "repetition_index" not in col_names_res:
+            db.execute(text("ALTER TABLE test_results ADD COLUMN repetition_index INTEGER"))
+            print("Migration: added column test_results.repetition_index")
+
+        columns_mod = db.execute(text("PRAGMA table_info(configured_models)")).fetchall()
+        col_names_mod = [c[1] for c in columns_mod]
+        for col_name in ["benchmark_temp_min", "benchmark_temp_mid", "benchmark_temp_max"]:
+            if col_name not in col_names_mod:
+                db.execute(text(f"ALTER TABLE configured_models ADD COLUMN {col_name} FLOAT"))
+                print(f"Migration: added column configured_models.{col_name}")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (benchmark columns): {e}")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from ..models import TestRun, TestResult, TestCase, ConfiguredModel, MetricResul
 from ..services.test_runner import execute_test_run
 from ..services.report_builder import generate_report, generate_csv
 from ..services.chart_builder import build_run_charts
+from ..services.benchmark_stats import compute_benchmark_stats, build_benchmark_chart_data
 from ..schemas import TestRunCreate
 
 router = APIRouter(prefix="/test-runs", tags=["test_runs"])
@@ -40,12 +41,22 @@ async def test_run_new(request: Request, db: Session = Depends(get_db)):
         if lid not in lib_groups:
             lib_groups[lid] = {"label": lib_map[lid].label if lid in lib_map else "General", "cases": []}
         lib_groups[lid]["cases"].append(tc)
+
+    family_groups = {}
+    for m in models:
+        f = m.family or m.provider or "other"
+        if f not in family_groups:
+            family_groups[f] = []
+        family_groups[f].append(m)
+    family_groups_sorted = dict(sorted(family_groups.items(), key=lambda x: x[0].lower()))
+
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="test_run_create.html",
         context={
             "request": request,
             "models": models,
+            "family_groups": family_groups_sorted,
             "lib_groups": lib_groups,
             "total_test_cases": len(test_cases),
             "mode": "create",
@@ -63,6 +74,26 @@ async def test_run_create(
     description = form.get("description", "")
     requested_model_ids = [str(x) for x in form.getlist("model_ids") if str(x).strip()]
     requested_test_case_ids = [int(x) for x in form.getlist("test_case_ids") if str(x).strip()]
+
+    benchmark_enabled = form.get("benchmark_enabled", "") == "1"
+    benchmark_config = {}
+    if benchmark_enabled:
+        from ..services.config_loader import get_benchmark_defaults
+        defaults = get_benchmark_defaults()
+        repeat_count = int(form.get("benchmark_repeat_count", defaults.get("repeat_count", 3)))
+
+        model_temperatures = {}
+        for mid in requested_model_ids:
+            t_min = float(form.get(f"bm_temp_min_{mid}", defaults.get("temperature_min", 0.1)))
+            t_mid = float(form.get(f"bm_temp_mid_{mid}", defaults.get("temperature_mid", 0.5)))
+            t_max = float(form.get(f"bm_temp_max_{mid}", defaults.get("temperature_max", 0.9)))
+            model_temperatures[mid] = [t_min, t_mid, t_max]
+
+        benchmark_config = {
+            "enabled": True,
+            "repeat_count": repeat_count,
+            "model_temperatures": model_temperatures,
+        }
 
     valid_model_ids = {
         row.id for row in db.query(ConfiguredModel.id).filter(ConfiguredModel.enabled == True).all()
@@ -90,6 +121,7 @@ async def test_run_create(
             }
         }),
         validator_config_json="{}",
+        benchmark_config_json=json.dumps(benchmark_config),
     )
     db.add(run)
     db.commit()
@@ -105,6 +137,18 @@ async def test_run_detail(id: int, request: Request, db: Session = Depends(get_d
 
     results = db.query(TestResult).filter(TestResult.test_run_id == id).all()
     chart_data = build_run_charts(db, id)
+
+    benchmark_cfg = json.loads(run.benchmark_config_json or "{}")
+    is_benchmark = benchmark_cfg.get("enabled", False)
+    benchmark_stats = None
+    benchmark_chart = None
+    if is_benchmark and run.status in ("completed", "failed"):
+        try:
+            benchmark_stats = compute_benchmark_stats(db, id)
+            benchmark_chart = build_benchmark_chart_data(benchmark_stats)
+        except Exception:
+            benchmark_stats = None
+            benchmark_chart = None
 
     results_data = []
     for r in results:
@@ -124,6 +168,8 @@ async def test_run_detail(id: int, request: Request, db: Session = Depends(get_d
             "score": score,
             "latency_ms": r.latency_ms,
             "error": r.error_message,
+            "temperature_used": r.temperature_used,
+            "repetition_index": r.repetition_index,
         })
 
     return request.app.state.templates.TemplateResponse(
@@ -133,7 +179,6 @@ async def test_run_detail(id: int, request: Request, db: Session = Depends(get_d
             "request": request,
             "run": run,
             "results": results_data,
-            "chart_data": json.dumps(chart_data),
             "chart_data_raw": chart_data,
             "total_results": len(results),
             "completed": sum(1 for r in results if r.status == "completed"),
@@ -142,6 +187,10 @@ async def test_run_detail(id: int, request: Request, db: Session = Depends(get_d
             "avg_latency": round(sum(r.latency_ms for r in results if r.latency_ms) / max(1, sum(1 for r in results if r.latency_ms)), 2),
             "executive_report": run.executive_report_text if run.status in ("completed", "failed") else None,
             "report": None,
+            "is_benchmark": is_benchmark,
+            "benchmark_stats": benchmark_stats,
+            "benchmark_chart": json.dumps(benchmark_chart) if benchmark_chart else "{}",
+            "benchmark_chart_raw": benchmark_chart,
         },
     )
 
@@ -223,6 +272,74 @@ async def test_run_rerun_failed(id: int, db: Session = Depends(get_db)):
     _running_tasks[id] = task
 
     return RedirectResponse(url=f"/test-runs/{id}", status_code=303)
+
+
+@router.get("/{id}/status")
+async def test_run_status(id: int, db: Session = Depends(get_db)):
+    run = db.query(TestRun).filter(TestRun.id == id).first()
+    if not run:
+        return {"status": "not_found"}
+
+    results = db.query(TestResult).filter(TestResult.test_run_id == id).all()
+    completed = sum(1 for r in results if r.status == "completed")
+    failed = sum(1 for r in results if r.status in ("failed", "timeout"))
+
+    scores = []
+    latencies = []
+    for r in results:
+        if r.latency_ms:
+            latencies.append(r.latency_ms)
+        for m in (r.metrics or []):
+            if m.metric_name == "final_score":
+                scores.append(m.metric_value)
+                break
+
+    resp = {
+        "run_id": id,
+        "status": run.status,
+        "total": len(results),
+        "completed": completed,
+        "failed": failed,
+        "avg_score": round(sum(scores) / len(scores), 4) if scores else None,
+        "avg_latency": round(sum(latencies) / len(latencies), 2) if latencies else None,
+    }
+
+    benchmark_cfg = json.loads(run.benchmark_config_json or "{}")
+    is_bm = benchmark_cfg.get("enabled", False)
+
+    resp["results"] = []
+    for r in results:
+        score = None
+        for m in (r.metrics or []):
+            if m.metric_name == "final_score":
+                score = m.metric_value
+                break
+        resp["results"].append({
+            "id": r.id,
+            "test_case": r.test_case.title if r.test_case else str(r.test_case_id),
+            "model_id": r.model_id,
+            "score": score,
+            "status": r.status,
+            "latency_ms": r.latency_ms,
+            "error": (r.error_message or "")[:50],
+            "temperature_used": r.temperature_used,
+            "repetition_index": r.repetition_index,
+        })
+
+    if run.status in ("completed", "failed"):
+        resp["executive_report"] = run.executive_report_text
+        if is_bm:
+            try:
+                bstats = compute_benchmark_stats(db, id)
+                bchart = build_benchmark_chart_data(bstats)
+                resp["benchmark_stats"] = bstats
+                resp["benchmark_chart"] = bchart
+            except Exception:
+                pass
+
+    resp["chart_data"] = build_run_charts(db, id)
+
+    return resp
 
 
 @router.get("/{id}/results")

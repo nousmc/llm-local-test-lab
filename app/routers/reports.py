@@ -20,7 +20,7 @@ async def report_list(request: Request, db: Session = Depends(get_db)):
 
     runs_without_reports = db.query(TestRun).filter(
         TestRun.status.in_(["completed", "failed"])
-    ).all()
+    ).order_by(TestRun.completed_at.desc()).all()
     missing = []
     for run in runs_without_reports:
         existing = db.query(Report).filter(Report.test_run_id == run.id).first()
@@ -59,6 +59,19 @@ async def report_detail(test_run_id: int, request: Request, db: Session = Depend
     findings = json.loads(report.findings_json or "{}")
     charts = json.loads(report.chart_payload_json or "{}")
 
+    benchmark_cfg = json.loads(run.benchmark_config_json or "{}") if run else {}
+    is_benchmark = benchmark_cfg.get("enabled", False)
+    benchmark_stats = None
+    benchmark_chart = None
+    if is_benchmark:
+        try:
+            from ..services.benchmark_stats import compute_benchmark_stats, build_benchmark_chart_data
+            benchmark_stats = compute_benchmark_stats(db, test_run_id)
+            benchmark_chart = build_benchmark_chart_data(benchmark_stats)
+        except Exception:
+            benchmark_stats = None
+            benchmark_chart = None
+
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="report_detail.html",
@@ -68,6 +81,10 @@ async def report_detail(test_run_id: int, request: Request, db: Session = Depend
             "run": run,
             "findings": findings,
             "charts": json.dumps(charts),
+            "is_benchmark": is_benchmark,
+            "benchmark_stats": benchmark_stats,
+            "benchmark_chart": json.dumps(benchmark_chart) if benchmark_chart else "{}",
+            "benchmark_chart_raw": benchmark_chart,
             "mode": "detail",
         },
     )

@@ -94,30 +94,30 @@
 <h1>Test Run #{{ run.id }}: {{ run.name | e }}</h1>
 <p>{{ run.description or '' | e }}</p>
 
-<div class="stats-grid">
+<div class="stats-grid" id="stats-grid">
     <div class="stat-card">
-        <div class="stat-value"><span class="status-{{ run.status }}">{{ run.status | e }}</span></div>
+        <div class="stat-value"><span class="status-{{ run.status }}" id="stat-status">{{ run.status | e }}</span></div>
         <div class="stat-label">Stato</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ total_results }}</div>
+        <div class="stat-value" id="stat-total">{{ total_results }}</div>
         <div class="stat-label">Totale test</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ completed }}</div>
+        <div class="stat-value" id="stat-completed">{{ completed }}</div>
         <div class="stat-label">Completati</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value" style="color:red">{{ failed }}</div>
+        <div class="stat-value" style="color:red" id="stat-failed">{{ failed }}</div>
         <div class="stat-label">Falliti</div>
     </div>
     {% if avg_score is defined %}
-    <div class="stat-card">
-        <div class="stat-value">{{ avg_score }}</div>
+    <div class="stat-card" id="stat-avgscore-card">
+        <div class="stat-value" id="stat-avgscore">{{ avg_score }}</div>
         <div class="stat-label">Score Medio</div>
     </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ avg_latency }} ms</div>
+    <div class="stat-card" id="stat-avglat-card">
+        <div class="stat-value" id="stat-avglat">{{ avg_latency }} ms</div>
         <div class="stat-label">Latenza Media</div>
     </div>
     {% endif %}
@@ -138,7 +138,92 @@
 <div class="progress-bar">
     <div class="progress-fill" style="width:{{ (completed / total_results * 100) if total_results else 0 }}%"></div>
 </div>
-<p style="margin-top:5px;font-size:12px">Auto-refresh: ricarica per aggiornare</p>
+<p style="margin-top:5px;font-size:12px" id="refresh-hint">Aggiornamento in corso...</p>
+<script>
+function setStat(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+
+(function poll() {
+    fetch('/test-runs/{{ run.id }}/status')
+        .then(function(r) { return r.json(); })
+        .then(function(s) {
+            var el = document.querySelector('.progress-fill');
+            if (el && s.total > 0) {
+                el.style.width = Math.min(100, (s.completed / s.total * 100)) + '%';
+            }
+            setStat('stat-total', s.total);
+            setStat('stat-completed', s.completed);
+            setStat('stat-failed', s.failed);
+            if (s.avg_score !== null && s.avg_score !== undefined) {
+                setStat('stat-avgscore', s.avg_score);
+                setStat('stat-avglat', (s.avg_latency || 0) + ' ms');
+                var sc = document.getElementById('stat-avgscore-card');
+                var lc = document.getElementById('stat-avglat-card');
+                if (sc) sc.style.display = '';
+                if (lc) lc.style.display = '';
+            }
+            var hint = document.getElementById('refresh-hint');
+            if (hint) hint.textContent = 'Completati: ' + s.completed + '/' + s.total + ' (falliti: ' + s.failed + ')';
+
+            if (s.chart_data) {
+                renderCharts(s.chart_data);
+            }
+            if (s.results) {
+                renderResults(s.results, {{ 'true' if is_benchmark else 'false' }}, {{ run.id }});
+            }
+
+            if (s.status === 'completed' || s.status === 'failed') {
+                if (hint) hint.textContent = 'Run completata.';
+                window.location.reload();
+            } else {
+                setTimeout(poll, 3000);
+            }
+        })
+        .catch(function() { setTimeout(poll, 3000); });
+})();
+
+function renderCharts(cd) {
+    var cs = cd.model_scores; var cp = cd.model_pass_rate; var cl = cd.model_latency;
+    var ct = cd.test_type_scores; var ctm = cd.test_type_model_datasets;
+    var csl = cd.library_scores; var clp = cd.library_pass_rate; var clm = cd.library_model_datasets;
+    if (cs && cs.labels && cs.labels.length > 0) makeBarChart('chart-run-scores', cs.labels, cs.data, 'Score', 'rgba(34,139,34,0.7)');
+    if (cp && cp.labels && cp.labels.length > 0) makeBarChart('chart-run-pass', cp.labels, cp.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    if (cl && cl.labels && cl.labels.length > 0) makeBarChart('chart-run-latency', cl.labels, cl.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
+    if (ct && ct.labels && ct.labels.length > 0) makeBarChart('chart-run-types', ct.labels, ct.data, 'Score per tipo', 'rgba(153,102,255,0.7)');
+    if (ctm && ctm.length > 0 && cd.test_type_model_labels) makeGroupedBarChart('chart-run-type-models', cd.test_type_model_labels, ctm);
+    if (csl && csl.labels && csl.labels.length > 0) makeBarChart('chart-run-lib-scores', csl.labels, csl.data, 'Score', 'rgba(34,139,34,0.7)');
+    if (clp && clp.labels && clp.labels.length > 0) makeBarChart('chart-run-lib-pass', clp.labels, clp.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    if (clm && clm.length > 0 && cd.library_model_labels) makeGroupedBarChart('chart-run-lib-models', cd.library_model_labels, clm);
+}
+
+function renderResults(rows, showBench, runId) {
+    var tbody = document.getElementById('results-tbody');
+    if (!tbody) return;
+    var cols = showBench ? 10 : 8;
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="' + cols + '">Nessun risultato</td></tr>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        html += '<tr>';
+        html += '<td>' + r.id + '</td>';
+        html += '<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (r.test_case || '') + '">' + (r.test_case || '') + '</td>';
+        html += '<td>' + (r.model_id || '') + '</td>';
+        if (showBench) {
+            html += '<td>' + (r.temperature_used != null ? r.temperature_used : '-') + '</td>';
+            html += '<td>' + (r.repetition_index != null ? r.repetition_index : '-') + '</td>';
+        }
+        html += '<td class="score">' + (r.score != null ? r.score : '-') + '</td>';
+        html += '<td><span class="status-' + (r.status || '') + '">' + (r.status || '') + '</span></td>';
+        html += '<td>' + (r.latency_ms ? r.latency_ms + ' ms' : '-') + '</td>';
+        html += '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis" title="' + (r.error || '') + '">' + (r.error || '-') + '</td>';
+        html += '<td><a href="/test-runs/' + runId + '/results/' + r.id + '">Dettaglio</a></td>';
+        html += '</tr>';
+    }
+    tbody.innerHTML = html;
+}
+</script>
 {% elif run.status in ('completed', 'failed') %}
 <div style="margin:15px 0">
     <form method="post" action="/test-runs/{{ run.id }}/rerun-failed" style="display:inline" onsubmit="return confirm('Rieseguire solo i falliti?')">
@@ -204,6 +289,101 @@
     </div>
 </div>
 {% endif %}
+{% if is_benchmark and benchmark_stats and benchmark_stats.has_benchmark_data %}
+<div class="config-section">
+    <h2>Benchmark — Risultati multi-temperatura</h2>
+
+    <h3>Classifica modelli</h3>
+    <p class="help-text" style="margin:0 0 10px 0">Score medio calcolato usando la temperatura ottimale per ciascuna tipologia di test. Il ranking riflette la performance cross-task con la miglior T per tipo.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Modello</th>
+                <th>Score medio</th>
+                <th>Tipologie test</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in benchmark_stats.ranking %}
+            <tr{% if loop.first %} style="background:#e8f5e9;font-weight:bold"{% endif %}>
+                <td>{{ entry.rank }}</td>
+                <td>{{ entry.model_label | e }}</td>
+                <td><strong>{{ entry.mean_score }}</strong></td>
+                <td>{{ entry.per_type_optimal | length }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Temperatura ottimale per tipologia</h3>
+    {% for mid, type_opts in benchmark_stats.model_per_type_optimal.items() %}
+    <h4>{{ benchmark_stats.model_labels.get(mid, mid) | e }}</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Tipologia</th>
+                <th>T ottimale</th>
+                <th>Score medio</th>
+                <th>Dev. Std</th>
+                <th>N</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ttype, opt in type_opts.items() %}
+            <tr>
+                <td>{{ ttype | e }}</td>
+                <td><strong>{{ opt.temperature }}</strong></td>
+                <td>{{ opt.mean_score }}</td>
+                <td>{{ opt.std_dev }}</td>
+                <td>{{ opt.count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+
+    <h3>Dettaglio globale per temperatura (tutti i test)</h3>
+    {% for mid, temps in benchmark_stats.model_global_stats.items() %}
+    <h4>{{ benchmark_stats.model_labels.get(mid, mid) | e }}</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Temperatura</th>
+                <th>Score medio</th>
+                <th>Min</th>
+                <th>Max</th>
+                <th>Dev. Std</th>
+                <th>N</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for temp_key, tdata in temps.items() %}
+            <tr>
+                <td>{{ temp_key }}</td>
+                <td>{{ tdata.mean_score }}</td>
+                <td>{{ tdata.min_score }}</td>
+                <td>{{ tdata.max_score }}</td>
+                <td>{{ tdata.std_dev }}</td>
+                <td>{{ tdata.count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+
+    {% if benchmark_chart_raw and benchmark_chart_raw.categories %}
+    <div class="charts-row">
+        <div class="chart-container" style="grid-column: 1 / -1">
+            <h3>Miglior modello: {{ benchmark_chart_raw.best_model_label | e }}</h3>
+            <canvas id="chart-benchmark-best"></canvas>
+            <p class="chart-desc">Score medio per tipologia di test usando la temperatura ottimale specifica per ogni tipo. Ogni barra usa la sua T ottimale.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if executive_report %}
 <div class="config-section">
     <h2>Report Esecutivo</h2>
@@ -218,9 +398,8 @@
         <tr>
             <th>ID</th>
             <th>Test Case</th>
-            <th>Descrizione</th>
             <th>Modello</th>
-            <th>Provider</th>
+            {% if is_benchmark %}<th>T°</th><th>Rep</th>{% endif %}
             <th>Score</th>
             <th>Status</th>
             <th>Latenza</th>
@@ -228,22 +407,24 @@
             <th>Azioni</th>
         </tr>
     </thead>
-    <tbody>
+    <tbody id="results-tbody">
         {% for r in results %}
         <tr>
             <td>{{ r.id }}</td>
-            <td>{{ r.test_case_title or r.test_case_id }}</td>
-            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.test_case_desc | e }}">{{ r.test_case_desc | e }}</td>
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.test_case_title or r.test_case_id }}">{{ r.test_case_title or r.test_case_id }}</td>
             <td>{{ r.model_id | e }}</td>
-            <td>{{ r.provider | e }}</td>
+            {% if is_benchmark %}
+            <td>{{ r.temperature_used if r.temperature_used is not none else '-' }}</td>
+            <td>{{ r.repetition_index if r.repetition_index is not none else '-' }}</td>
+            {% endif %}
             <td class="score">{{ r.score if r.score is not none else '-' }}</td>
             <td><span class="status-{{ r.status }}">{{ r.status | e }}</span></td>
             <td>{{ r.latency_ms if r.latency_ms else '-' }} ms</td>
-            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="{{ r.error | e if r.error else '' }}">{{ r.error[:50] if r.error else '-' }}</td>
+            <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis" title="{{ r.error | e if r.error else '' }}">{{ r.error[:40] if r.error else '-' }}</td>
             <td><a href="/test-runs/{{ run.id }}/results/{{ r.id }}">Dettaglio</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="10">Nessun risultato</td></tr>
+        <tr><td colspan="{{ 10 if is_benchmark else 8 }}">Nessun risultato</td></tr>
         {% endfor %}
     </tbody>
 </table>
@@ -253,37 +434,56 @@
     <a href="/test-runs/{{ run.id }}/results.json" class="btn">Esporta JSON</a>
 </div>
 
+{% if run.status != 'running' %}
 <script>
-try {
-    var chartData = JSON.parse('{{ chart_data | safe }}');
-    document.addEventListener('DOMContentLoaded', function() {
-        if (chartData.model_scores && chartData.model_scores.labels.length > 0) {
-            makeBarChart('chart-run-scores', chartData.model_scores.labels, chartData.model_scores.data, 'Score', 'rgba(34,139,34,0.7)');
-        }
-        if (chartData.model_pass_rate && chartData.model_pass_rate.labels.length > 0) {
-            makeBarChart('chart-run-pass', chartData.model_pass_rate.labels, chartData.model_pass_rate.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
-        }
-        if (chartData.model_latency && chartData.model_latency.labels.length > 0) {
-            makeBarChart('chart-run-latency', chartData.model_latency.labels, chartData.model_latency.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
-        }
-        if (chartData.test_type_scores && chartData.test_type_scores.labels.length > 0) {
-            makeBarChart('chart-run-types', chartData.test_type_scores.labels, chartData.test_type_scores.data, 'Score per tipo', 'rgba(153,102,255,0.7)');
-        }
-        if (chartData.test_type_model_datasets && chartData.test_type_model_datasets.length > 0) {
-            makeGroupedBarChart('chart-run-type-models', chartData.test_type_model_labels, chartData.test_type_model_datasets);
-        }
-        if (chartData.library_scores && chartData.library_scores.labels.length > 0) {
-            makeBarChart("chart-run-lib-scores", chartData.library_scores.labels, chartData.library_scores.data, "Score", "rgba(34,139,34,0.7)");
-        }
-        if (chartData.library_pass_rate && chartData.library_pass_rate.labels.length > 0) {
-            makeBarChart("chart-run-lib-pass", chartData.library_pass_rate.labels, chartData.library_pass_rate.data, "Pass Rate %", "rgba(54,162,235,0.7)");
-        }
-        if (chartData.library_model_datasets && chartData.library_model_datasets.length > 0) {
-            makeGroupedBarChart("chart-run-lib-models", chartData.library_model_labels, chartData.library_model_datasets);
-        }
-    });
-} catch(e) {}
+(function initCharts() {
+    fetch('/test-runs/{{ run.id }}/status')
+        .then(function(r) { return r.json(); })
+        .then(function(s) {
+            if (s.chart_data) renderCharts(s.chart_data);
+            {% if is_benchmark %}
+            if (s.benchmark_chart && s.benchmark_chart.categories) {
+                var bc = s.benchmark_chart;
+                var ctx = document.getElementById('chart-benchmark-best');
+                if (ctx && bc.categories.length > 0) {
+                    new Chart(ctx.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: bc.categories,
+                            datasets: [{label:'Score medio',data:bc.category_scores,backgroundColor:'rgba(34,139,34,0.7)',borderColor:'rgba(34,139,34,1)',borderWidth:1}]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: { y: { beginAtZero: true, max: 1.1 } },
+                            plugins: { tooltip: { callbacks: { afterLabel: function(ctx) {
+                                var t = bc.category_temps ? bc.category_temps[ctx.dataIndex] : '?';
+                                var sd = bc.category_std_dev ? bc.category_std_dev[ctx.dataIndex] : '?';
+                                return 'T: ' + t + '  |  Dev.Std: \u00b1' + sd;
+                            }}}}
+                        }
+                    });
+                }
+            }
+            {% endif %}
+        });
+})();
+
+function renderCharts(cd) {
+    if (!cd || !cd.model_scores || !cd.model_scores.labels) return;
+    var cs = cd.model_scores; var cp = cd.model_pass_rate; var cl = cd.model_latency;
+    var ct = cd.test_type_scores; var ctm = cd.test_type_model_datasets;
+    var csl = cd.library_scores; var clp = cd.library_pass_rate; var clm = cd.library_model_datasets;
+    if (cs.labels.length > 0) makeBarChart('chart-run-scores', cs.labels, cs.data, 'Score', 'rgba(34,139,34,0.7)');
+    if (cp && cp.labels && cp.labels.length > 0) makeBarChart('chart-run-pass', cp.labels, cp.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    if (cl && cl.labels && cl.labels.length > 0) makeBarChart('chart-run-latency', cl.labels, cl.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
+    if (ct && ct.labels && ct.labels.length > 0) makeBarChart('chart-run-types', ct.labels, ct.data, 'Score per tipo', 'rgba(153,102,255,0.7)');
+    if (ctm && ctm.length > 0 && cd.test_type_model_labels) makeGroupedBarChart('chart-run-type-models', cd.test_type_model_labels, ctm);
+    if (csl && csl.labels && csl.labels.length > 0) makeBarChart('chart-run-lib-scores', csl.labels, csl.data, 'Score', 'rgba(34,139,34,0.7)');
+    if (clp && clp.labels && clp.labels.length > 0) makeBarChart('chart-run-lib-pass', clp.labels, clp.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    if (clm && clm.length > 0 && cd.library_model_labels) makeGroupedBarChart('chart-run-lib-models', cd.library_model_labels, clm);
+}
 </script>
 
+{% endif %}
 {% endif %}
 {% endblock %}

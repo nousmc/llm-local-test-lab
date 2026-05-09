@@ -193,6 +193,9 @@ async def generate_executive_report(db: Session, test_run_id: int) -> str | None
     if not results:
         return None
 
+    benchmark_cfg = json.loads(run.benchmark_config_json or "{}")
+    is_benchmark = benchmark_cfg.get("enabled", False)
+
     scores = []
     model_stats = {}
     errors = []
@@ -221,6 +224,22 @@ async def generate_executive_report(db: Session, test_run_id: int) -> str | None
         avg_lat = round(sum(ms["latencies"]) / len(ms["latencies"]), 2) if ms["latencies"] else 0
         model_summary += f"- {mid}: score medio {avg}, {ms['total']} test, {ms['failures']} falliti, latenza media {avg_lat}ms\n"
 
+    benchmark_section = ""
+    if is_benchmark:
+        try:
+            from .benchmark_stats import compute_benchmark_stats
+            bstats = compute_benchmark_stats(db, test_run_id)
+            if bstats.get("has_benchmark_data"):
+                repeat_count = benchmark_cfg.get("repeat_count", 3)
+                benchmark_section = f"\nModalità benchmark: {repeat_count} ripetizioni per test a 3 temperature diverse.\n"
+                benchmark_section += "Classifica (score medio per tipo con temperatura ottimale):\n"
+                for entry in bstats.get("ranking", [])[:10]:
+                    benchmark_section += f"  #{entry['rank']} {entry['model_label']} — {entry['mean_score']}\n"
+                    for ttype, opt in entry.get("per_type_optimal", {}).items():
+                        benchmark_section += f"      {ttype}: T={opt['temperature']} score={opt['mean_score']} std={opt['std_dev']}\n"
+        except Exception:
+            pass
+
     prompt = f"""Sei un analista tecnico che deve scrivere un executive report sui risultati di un benchmark LLM.
 
 Dati della run:
@@ -230,11 +249,11 @@ Score medio globale: {round(sum(scores)/len(scores), 4) if scores else 'N/D'}
 
 Risultati per modello:
 {model_summary}
-
+{benchmark_section}
 Errori riscontrati:
 {chr(10).join(errors[:10]) if errors else 'Nessun errore significativo'}
 
-Scrivi un executive report in italiano (max 400 parole).
+Scrivi un executive report in italiano (max 500 parole).
 
 Formato obbligatorio:
 - Restituisci SOLO testo semplice.
@@ -247,13 +266,13 @@ Sintesi esecutiva
 <2-3 frasi sui risultati complessivi>
 
 Confronto tra modelli
-<chi ha performato meglio/peggio e perche>
+<chi ha performato meglio/peggio e perche, includi analisi delle temperature ottimali se presenti>
 
 Analisi errori
 <pattern ricorrenti e criticita>
 
 Raccomandazioni operative
-<quale modello usare per quale scopo>
+<quale modello usare per quale scopo e a quale temperatura>
 
 Sii concreto e basati solo sui dati forniti. Non inventare informazioni."""
 
@@ -263,7 +282,7 @@ Sii concreto e basati solo sui dati forniti. Non inventare informazioni."""
 
         val_cfg = _get_validator_settings()
         if not val_cfg.get("enabled"):
-            return _build_simple_executive_report(results, model_stats, scores, errors)
+            return _build_simple_executive_report(results, model_stats, scores, errors, is_benchmark, db, test_run_id)
 
         client = get_provider_client(val_cfg["provider"])
         resp = await client.chat(
@@ -286,10 +305,10 @@ Sii concreto e basati solo sui dati forniti. Non inventare informazioni."""
                 )
                 text = resp2.get("text", "")
 
-        return _normalize_executive_report(text) if text else _build_simple_executive_report(results, model_stats, scores, errors)
+        return _normalize_executive_report(text) if text else _build_simple_executive_report(results, model_stats, scores, errors, is_benchmark, db, test_run_id)
 
     except Exception:
-        return _build_simple_executive_report(results, model_stats, scores, errors)
+        return _build_simple_executive_report(results, model_stats, scores, errors, is_benchmark, db, test_run_id)
 
 
 def _normalize_executive_report(text: str) -> str:
@@ -352,7 +371,7 @@ def _normalize_executive_report(text: str) -> str:
     return cleaned.strip()
 
 
-def _build_simple_executive_report(results, model_stats, scores, errors):
+def _build_simple_executive_report(results, model_stats, scores, errors, is_benchmark=False, db=None, test_run_id=None):
     total = len(results)
     avg_score = round(sum(scores) / len(scores), 4) if scores else 0
     passed = sum(1 for s in scores if s >= 0.80)
@@ -362,9 +381,26 @@ def _build_simple_executive_report(results, model_stats, scores, errors):
 
     report = f"""EXECUTIVE REPORT AUTOMATICO
 
-Sintesi esecutiva: Sono stati eseguiti {total} test su {len(model_stats)} modelli. Score medio globale: {avg_score}. {passed} test superati (>=0.80), {failed} falliti. Il miglior modello e {best_model}.
+Sintesi esecutiva: Sono stati eseguiti {total} test su {len(model_stats)} modelli. Score medio globale: {avg_score}. {passed} test superati (>=0.80), {failed} falliti."""
 
-Analisi errori: {error_count} errori riscontrati. I problemi piu comuni includono errori di connessione ai provider, timeout, e fallimenti nella validazione del formato JSON atteso.
+    if is_benchmark and db and test_run_id:
+        try:
+            from .benchmark_stats import compute_benchmark_stats
+            bstats = compute_benchmark_stats(db, test_run_id)
+            if bstats.get("ranking"):
+                best = bstats["ranking"][0]
+                report += f"\n\nClassifica benchmark (temperatura ottimale per tipologia):\n"
+                for entry in bstats["ranking"][:5]:
+                    report += f"- #{entry['rank']} {entry['model_label']}: {entry['mean_score']}\n"
+                report += f"\nMiglior modello: {best['model_label']} con score {best['mean_score']}\nTemperature ottimali per tipologia:\n"
+                for ttype, opt in best.get("per_type_optimal", {}).items():
+                    report += f"  {ttype}: T={opt['temperature']} (score {opt['mean_score']})\n"
+        except Exception:
+            pass
+    else:
+        report += f"\n\nMiglior modello: {best_model}."
 
-Raccomandazioni: Selezionare il modello con score medio piu alto per i task critici. Per task che richiedono output JSON strutturato, preferire modelli con supports_json=true. Verificare la raggiungibilita dei provider prima di eseguire le run."""
+    report += f"\n\nAnalisi errori: {error_count} errori riscontrati. I problemi piu comuni includono errori di connessione ai provider, timeout, e fallimenti nella validazione del formato JSON atteso."
+
+    report += f"\n\nRaccomandazioni: Selezionare il modello con score medio piu alto per i task critici. Per task che richiedono output JSON strutturato, preferire modelli con supports_json=true. Verificare la raggiungibilita dei provider prima di eseguire le run."
     return report

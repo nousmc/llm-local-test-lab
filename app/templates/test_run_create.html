@@ -37,43 +37,88 @@
 {% elif mode == 'create' %}
 
 <form method="post" action="/test-runs/" class="form">
-    <div class="form-group">
-        <label>Nome run *</label>
-        <input type="text" name="name" required>
-    </div>
-    <div class="form-group">
-        <label>Descrizione</label>
-        <textarea name="description" rows="3"></textarea>
-    </div>
 
-    <div class="form-group">
-        <label>Modelli da testare</label>
-        <div class="checkbox-grid">
-            {% for m in models %}
-            <label class="checkbox-label">
-                <input type="checkbox" name="model_ids" value="{{ m.id | e }}">
-                {{ m.label | e }} ({{ m.provider | e }})
-            </label>
-            {% else %}
-            <p>Nessun modello abilitato.</p>
-            {% endfor %}
-        </div>
-    </div>
-
-    <div class="form-group">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <label style="margin:0">Test case ({{ total_test_cases }} totali)</label>
-            <div>
-                <button type="button" class="btn btn-small" onclick="toggleAllLibs(true)">Seleziona tutto</button>
-                <button type="button" class="btn btn-small" onclick="toggleAllLibs(false)">Deseleziona tutto</button>
+    <!-- ======== Section: Info ======== -->
+    <fieldset class="form-section">
+        <legend>Info Run</legend>
+        <div class="form-row">
+            <div class="form-group flex-1">
+                <label>Nome run *</label>
+                <input type="text" name="name" required placeholder="es. Benchmark Qwen vs Devstral">
+            </div>
+            <div class="form-group flex-2">
+                <label>Descrizione</label>
+                <input type="text" name="description" placeholder="Note opzionali sulla run">
             </div>
         </div>
+    </fieldset>
 
+    <!-- ======== Section: Benchmark (toggle at top) ======== -->
+    <fieldset class="form-section">
+        <legend>
+            <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" name="benchmark_enabled" value="1" onchange="toggleBenchmark(this.checked)">
+                <strong>Modalità Benchmark</strong>
+                <span style="font-weight:normal;font-size:12px;color:#888">— temperature multiple + ripetizioni</span>
+            </label>
+        </legend>
+        <div id="benchmark-params" style="display:none">
+            <div class="form-group">
+                <label>Ripetizioni per test <em style="font-size:11px;color:#888">(uguale per tutti i modelli)</em></label>
+                <input type="number" name="benchmark_repeat_count" value="3" min="1" max="10" style="width:80px">
+            </div>
+            <div class="help-text" style="margin:4px 0 10px 0">Ogni combinazione modello × temperatura × test case verrà eseguita N volte. Lo score finale per modello userà solo la sua temperatura ottimale.</div>
+        </div>
+    </fieldset>
+
+    <!-- ======== Section: Modelli ======== -->
+    <fieldset class="form-section">
+        <legend>Modelli da testare</legend>
+        <div style="margin-bottom:8px">
+            <button type="button" class="btn btn-small" onclick="toggleAllModels(true)">Seleziona tutto</button>
+            <button type="button" class="btn btn-small" onclick="toggleAllModels(false)">Deseleziona tutto</button>
+        </div>
+
+        {% for family, fam_models in family_groups.items() %}
+        <div class="lib-panel" id="fam-{{ family | e }}">
+            <div class="lib-panel-header">
+                <span class="lib-toggle" onclick="this.closest('.lib-panel').classList.toggle('collapsed'); event.stopPropagation()">&#9660;</span>
+                <input type="checkbox" class="lib-master-check model-family-master" onclick="event.stopPropagation()" onchange="toggleFamily('{{ family | e }}', this.checked)" title="Seleziona tutto {{ family | e }}">
+                <strong>{{ family | e }}</strong>
+                <span class="lib-count">{{ fam_models | length }} modelli</span>
+            </div>
+            <div class="lib-panel-body" style="grid-template-columns:1fr">
+                {% for m in fam_models %}
+                <label class="model-row" data-family="{{ family | e }}">
+                    <input type="checkbox" name="model_ids" value="{{ m.id | e }}" class="fam-check-{{ family | e }}" onchange="toggleModelRow(this)">
+                    <strong>{{ m.label | e }}</strong>
+                    <span class="model-meta">{{ m.provider | e }} &middot; {{ m.size_b if m.size_b else '?' }}B &middot; ctx {{ m.context_window if m.context_window else '?' }}</span>
+                    <span class="model-temps" style="display:none">
+                        <label class="temp-inline"><span>min</span><input type="number" name="bm_temp_min_{{ m.id | e }}" value="{{ m.benchmark_temp_min if m.benchmark_temp_min is not none else 0.1 }}" step="0.05" min="0" max="2"></label>
+                        <label class="temp-inline"><span>mid</span><input type="number" name="bm_temp_mid_{{ m.id | e }}" value="{{ m.benchmark_temp_mid if m.benchmark_temp_mid is not none else 0.5 }}" step="0.05" min="0" max="2"></label>
+                        <label class="temp-inline"><span>max</span><input type="number" name="bm_temp_max_{{ m.id | e }}" value="{{ m.benchmark_temp_max if m.benchmark_temp_max is not none else 0.9 }}" step="0.05" min="0" max="2"></label>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p>Nessun modello abilitato. <a href="/models/new">Aggiungine uno</a>.</p>
+        {% endfor %}
+    </fieldset>
+
+    <!-- ======== Section: Test case ======== -->
+    <fieldset class="form-section">
+        <legend>Test case ({{ total_test_cases }} totali)</legend>
+        <div style="margin-bottom:8px">
+            <button type="button" class="btn btn-small" onclick="toggleAllLibs(true)">Seleziona tutto</button>
+            <button type="button" class="btn btn-small" onclick="toggleAllLibs(false)">Deseleziona tutto</button>
+        </div>
         {% for lib_id, lib_data in lib_groups.items() %}
         <div class="lib-panel">
-            <div class="lib-panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
-                <span class="lib-toggle">&#9660;</span>
-                <input type="checkbox" class="lib-master-check" onchange="toggleLibrary('{{ lib_id }}', this.checked)" title="Seleziona tutto {{ lib_data.label }}">
+            <div class="lib-panel-header">
+                <span class="lib-toggle" onclick="this.closest('.lib-panel').classList.toggle('collapsed'); event.stopPropagation()">&#9660;</span>
+                <input type="checkbox" class="lib-master-check" onclick="event.stopPropagation()" onchange="toggleLibrary('{{ lib_id }}', this.checked)" title="Seleziona tutto {{ lib_data.label }}">
                 <strong>{{ lib_data.label | e }}</strong>
                 <span class="lib-count">{{ lib_data.cases | length }} test</span>
                 <span class="lib-types">({% for tc in lib_data.cases %}{% if loop.first or tc.test_type_id != loop.previtem.test_type_id %}{{ tc.test_type_id | e }}{% if not loop.last and tc.test_type_id != lib_data.cases[loop.index0+1].test_type_id %}, {% endif %}{% endif %}{% endfor %})</span>
@@ -90,12 +135,48 @@
         {% else %}
         <p>Nessun test case.</p>
         {% endfor %}
-    </div>
+    </fieldset>
 
     <button type="submit" class="btn">Crea Run</button>
 </form>
 
 <script>
+var benchmarkOn = false;
+
+function toggleBenchmark(enabled) {
+    benchmarkOn = enabled;
+    document.getElementById('benchmark-params').style.display = enabled ? 'block' : 'none';
+    refreshAllModelTemps();
+}
+
+function toggleModelRow(cb) {
+    var row = cb.closest('.model-row');
+    var temps = row.querySelector('.model-temps');
+    if (temps) temps.style.display = (benchmarkOn && cb.checked) ? 'inline-flex' : 'none';
+}
+
+function refreshAllModelTemps() {
+    document.querySelectorAll('.model-row .model-temps').forEach(function(el) {
+        var cb = el.closest('.model-row').querySelector('input[type=checkbox]');
+        el.style.display = (benchmarkOn && cb && cb.checked) ? 'inline-flex' : 'none';
+    });
+}
+
+function toggleFamily(family, checked) {
+    document.querySelectorAll('.fam-check-' + family).forEach(function(cb) {
+        cb.checked = checked;
+        toggleModelRow(cb);
+    });
+}
+
+function toggleAllModels(checked) {
+    document.querySelectorAll('.model-row input[type=checkbox][name=model_ids]').forEach(function(cb) {
+        cb.checked = checked;
+        toggleModelRow(cb);
+    });
+    document.querySelectorAll('.model-family-master').forEach(function(mc) { mc.checked = checked; });
+}
+
 function toggleLibrary(libId, checked) {
     var checks = document.querySelectorAll('.lib-check-' + libId);
     checks.forEach(function(cb) { cb.checked = checked; });

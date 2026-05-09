@@ -424,10 +424,37 @@ async def execute_test_run(run_id: int):
 
         print(f"Starting run {run.id} with models: {[m.model_name for m in models]}")
 
+        benchmark_cfg = json.loads(run.benchmark_config_json or "{}")
+        is_benchmark = benchmark_cfg.get("enabled", False)
+
         tasks = []
-        for tc in test_cases:
+        if is_benchmark:
+            repeat_count = int(benchmark_cfg.get("repeat_count", 3))
+            model_temps = benchmark_cfg.get("model_temperatures", {})
+            fallback_temps = [
+                float(benchmark_cfg.get("temperature_min", 0.1)),
+                float(benchmark_cfg.get("temperature_mid", 0.5)),
+                float(benchmark_cfg.get("temperature_max", 0.9)),
+            ]
+            print(f"Benchmark mode: {repeat_count} ripetizioni per test")
+            total_exec = 0
             for model in models:
-                tasks.append(_run_single_test(run, tc, model, retry_attempts, max_latency, db))
+                temperatures = model_temps.get(model.id, fallback_temps)
+                print(f"  Model {model.id}: temperatures = {temperatures}")
+                for temperature in temperatures:
+                    for tc in test_cases:
+                        for rep in range(repeat_count):
+                            tasks.append(_run_single_test(
+                                run, tc, model, retry_attempts, max_latency, db,
+                                temperature_override=float(temperature),
+                                repetition_index=rep,
+                            ))
+                            total_exec += 1
+            print(f"Total run: {total_exec} executions")
+        else:
+            for tc in test_cases:
+                for model in models:
+                    tasks.append(_run_single_test(run, tc, model, retry_attempts, max_latency, db))
 
         semaphore = asyncio.Semaphore(parallelism)
 
@@ -444,16 +471,32 @@ async def execute_test_run(run_id: int):
         else:
             run.status = "completed"
         run.completed_at = datetime.now(timezone.utc)
-        db.commit()
+
+        if is_benchmark:
+            try:
+                from .benchmark_stats import compute_benchmark_stats, build_benchmark_chart_data
+                bstats = compute_benchmark_stats(db, run_id)
+                if bstats.get("has_benchmark_data"):
+                    run.benchmark_config_json = json.dumps({
+                        **benchmark_cfg,
+                        "stats": {
+                            "ranking": bstats["ranking"][:10],
+                            "best_model": bstats.get("best_model"),
+                        },
+                    })
+                    print(f"Benchmark stats computed: best model = {bstats.get('best_model')}")
+            except Exception as e:
+                print(f"Benchmark stats computation error: {e}")
 
         try:
             from .report_builder import generate_executive_report
             report_text = await generate_executive_report(db, run_id)
             if report_text:
                 run.executive_report_text = report_text
-                db.commit()
         except Exception:
             pass
+
+        db.commit()
 
     except Exception as e:
         try:
@@ -475,6 +518,8 @@ async def _run_single_test(
     retry_attempts: int,
     max_latency: float,
     db: Session,
+    temperature_override: float | None = None,
+    repetition_index: int | None = None,
 ):
     test_type = db.query(TestType).filter(TestType.id == test_case.test_type_id).first()
     type_label = test_type.label if test_type else test_case.test_type_id
@@ -521,9 +566,12 @@ async def _run_single_test(
                 prompts = [{"role": "system", "content": test_case.system_prompt}, {"role": "user", "content": prompt}]
 
             params = json.loads(model.default_params_json or "{}")
-            temperature = params.get("temperature", 0.0)
+            temperature = temperature_override if temperature_override is not None else params.get("temperature", 0.0)
             top_p = params.get("top_p", 0.9)
             max_tokens = params.get("max_tokens", 1024)
+
+            result.temperature_used = temperature_override
+            result.repetition_index = repetition_index
 
             response_format = "json" if model.supports_json else None
 

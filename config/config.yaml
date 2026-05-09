@@ -364,6 +364,12 @@ test_types:
     label: "Brainstorming e Conoscenza Contestuale"
     expected_schema: "insight_expected"
 
+benchmark_defaults:
+  repeat_count: 3
+  temperature_min: 0.1
+  temperature_mid: 0.5
+  temperature_max: 0.9
+
 thresholds:
   default_pass_score: 0.80
   json_validity_required: true

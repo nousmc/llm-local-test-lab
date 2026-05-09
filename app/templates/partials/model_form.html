@@ -61,6 +61,22 @@
             </select>
         </div>
     </div>
+    <h3>Temperature Benchmark</h3>
+    <p style="font-size:11px;color:#888">Usate solo in modalità benchmark. Il modello verrà testato a queste 3 temperature.</p>
+    <div class="form-row">
+        <div class="form-group">
+            <label>T min</label>
+            <input type="number" step="0.05" name="benchmark_temp_min" value="{{ model.benchmark_temp_min if model else '0.1' }}" min="0" max="2">
+        </div>
+        <div class="form-group">
+            <label>T mid</label>
+            <input type="number" step="0.05" name="benchmark_temp_mid" value="{{ model.benchmark_temp_mid if model else '0.5' }}" min="0" max="2">
+        </div>
+        <div class="form-group">
+            <label>T max</label>
+            <input type="number" step="0.05" name="benchmark_temp_max" value="{{ model.benchmark_temp_max if model else '0.9' }}" min="0" max="2">
+        </div>
+    </div>
     <h3>Parametri default</h3>
     <div class="form-row">
         <div class="form-group">
