@@ -60,6 +60,18 @@ async def report_detail(test_run_id: int, request: Request, db: Session = Depend
     findings = json.loads(report.findings_json or "{}")
     charts = json.loads(report.chart_payload_json or "{}")
 
+    # Retrocompatibilità: calcola model_weighted_scores se manca nel payload salvato
+    if "model_weighted_scores" not in charts and "model_scores" in charts:
+        ms = charts["model_scores"]
+        labels = ms.get("labels", [])
+        scores = ms.get("data", [])
+        pass_rates = ms.get("pass_rates", [])
+        if labels and scores and pass_rates and len(labels) == len(scores) == len(pass_rates):
+            charts["model_weighted_scores"] = {
+                "labels": labels,
+                "data": [round(s * (p / 100.0), 4) for s, p in zip(scores, pass_rates)],
+            }
+
     benchmark_cfg = json.loads(run.benchmark_config_json or "{}") if run else {}
     is_benchmark = benchmark_cfg.get("enabled", False)
     benchmark_stats = None

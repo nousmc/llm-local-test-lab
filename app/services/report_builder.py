@@ -133,11 +133,19 @@ def generate_report(db: Session, test_run_id: int) -> Report | None:
 
 
 def _build_chart_data(model_stats, test_type_scores, errors_by_type, latencies, scores):
+    model_labels = list(model_stats.keys())
     return {
         "model_scores": {
-            "labels": list(model_stats.keys()),
+            "labels": model_labels,
             "data": [model_stats[k]["avg_score"] for k in model_stats],
             "pass_rates": [model_stats[k]["pass_rate"] for k in model_stats],
+        },
+        "model_weighted_scores": {
+            "labels": model_labels,
+            "data": [
+                round(model_stats[k]["avg_score"] * (model_stats[k]["pass_rate"] / 100.0), 4)
+                for k in model_stats
+            ],
         },
         "test_type_scores": {
             "labels": list(test_type_scores.keys()),
