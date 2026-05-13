@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import TestRun, Report, TestResult
 from ..services.report_builder import generate_report, generate_csv
+from ..services.config_loader import get_weighted_score_threshold
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -81,6 +82,7 @@ async def report_detail(test_run_id: int, request: Request, db: Session = Depend
             "run": run,
             "findings": findings,
             "charts": json.dumps(charts),
+            "weighted_score_threshold": get_weighted_score_threshold(),
             "is_benchmark": is_benchmark,
             "benchmark_stats": benchmark_stats,
             "benchmark_chart": json.dumps(benchmark_chart) if benchmark_chart else "{}",

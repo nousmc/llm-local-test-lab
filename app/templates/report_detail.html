@@ -144,6 +144,13 @@ function sortTable(link, colIdx) {
         <p class="chart-desc">Percentuale di test superati (score >= 0.80). Piu alta e la percentuale, piu affidabile e il modello.</p>
     </div>
 </div>
+<div class="charts-row">
+    <div class="chart-container" style="grid-column:1/-1">
+        <h3>Score ponderato per modello (score_medio × pass_rate)</h3>
+        <canvas id="chart-r-weighted"></canvas>
+        <p class="chart-desc">Score medio corretto per il tasso di superamento. Modelli sopra soglia ({{ weighted_score_threshold }}) in verde, sotto in rosso. La linea tratteggiata indica la soglia di accettabilita.</p>
+    </div>
+</div>
 
 <h3>Risultati aggregati</h3>
 <table>
@@ -212,6 +219,10 @@ try {
     }
     if (charts.model_scores && charts.model_scores.pass_rates && charts.model_scores.pass_rates.length > 0) {
         makeBarChart('chart-r-pass', charts.model_scores.labels, charts.model_scores.pass_rates, 'Pass Rate %', 'rgba(54,162,235,0.7)');
+    }
+    var cw = charts.model_weighted_scores;
+    if (cw && cw.labels && cw.labels.length > 0) {
+        makeWeightedScoreChart('chart-r-weighted', cw.labels, cw.data, {{ weighted_score_threshold }});
     }
 } catch(e) {}
 {% if is_benchmark and benchmark_chart_raw and benchmark_chart_raw.categories %}
