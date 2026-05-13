@@ -19,6 +19,7 @@ async def provider_create(
     enabled: str = Form("true"),
     app_name: str = Form(""),
     site_url: str = Form(""),
+    api_key_name: str = Form(""),
     db: Session = Depends(get_db),
 ):
     existing = db.query(ProviderConfig).filter(ProviderConfig.name == name).first()
@@ -33,6 +34,7 @@ async def provider_create(
         enabled=enabled == "true",
         app_name=app_name or None,
         site_url=site_url or None,
+        api_key_name=api_key_name or None,
     )
     db.add(prov)
     db.commit()
@@ -50,6 +52,7 @@ async def provider_update(
     enabled: str = Form("true"),
     app_name: str = Form(""),
     site_url: str = Form(""),
+    api_key_name: str = Form(""),
     db: Session = Depends(get_db),
 ):
     prov = db.query(ProviderConfig).filter(ProviderConfig.id == provider_id).first()
@@ -63,6 +66,7 @@ async def provider_update(
     prov.enabled = enabled == "true"
     prov.app_name = app_name or None
     prov.site_url = site_url or None
+    prov.api_key_name = api_key_name or None
     prov.updated_at = datetime.now(timezone.utc)
     db.commit()
     return RedirectResponse(url="/config", status_code=303)

@@ -96,6 +96,7 @@ def _sync_config_to_db():
         _migrate_test_case_rules_column(db)
         _migrate_test_type_template_column(db)
         _migrate_test_type_answer_format_column(db)
+        _migrate_provider_api_key_column(db)
 
         existing_providers = db.query(ProviderConfig).count()
         existing_validators = db.query(ValidatorConfig).count()
@@ -390,6 +391,20 @@ def _migrate_test_type_answer_format_column(db):
     except Exception as e:
         db.rollback()
         print(f"Migration warning (test_types.answer_format_template): {e}")
+
+
+def _migrate_provider_api_key_column(db):
+    from sqlalchemy import text
+    try:
+        columns = db.execute(text("PRAGMA table_info(provider_configs)")).fetchall()
+        col_names = [c[1] for c in columns]
+        if "api_key_name" not in col_names:
+            db.execute(text("ALTER TABLE provider_configs ADD COLUMN api_key_name VARCHAR"))
+            print("Migration: added column provider_configs.api_key_name")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (provider_configs.api_key_name): {e}")
 
 
 if __name__ == "__main__":

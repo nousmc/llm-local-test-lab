@@ -51,12 +51,28 @@
                     <input type="text" name="site_url" value="{{ edit_provider.site_url | e if edit_provider else '' }}">
                 </div>
             </div>
-            <div class="form-group">
-                <label>Abilitato</label>
-                <select name="enabled">
-                    <option value="true" {% if edit_provider and edit_provider.enabled %}selected{% endif %}>Si</option>
-                    <option value="false" {% if edit_provider and not edit_provider.enabled %}selected{% endif %}>No</option>
-                </select>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Abilitato</label>
+                    <select name="enabled">
+                        <option value="true" {% if edit_provider and edit_provider.enabled %}selected{% endif %}>Si</option>
+                        <option value="false" {% if edit_provider and not edit_provider.enabled %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>API Key associata</label>
+                    <select name="api_key_name">
+                        <option value="">-- Nessuna --</option>
+                        {% for sc in all_secrets %}
+                        {% if sc.key != 'APP_SECRET_KEY' %}
+                        <option value="{{ sc.key | e }}"
+                            {% if edit_provider and edit_provider.api_key_name == sc.key %}selected{% endif %}>
+                            {{ sc.key | e }}
+                        </option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <button type="submit" class="btn">{% if edit_provider %}Aggiorna{% else %}Crea{% endif %}</button>
             <button type="button" class="btn btn-small" onclick="document.getElementById('add-provider-form').style.display='none'" style="background:#888">Annulla</button>
@@ -71,6 +87,7 @@
                 <th>Label</th>
                 <th>Base URL</th>
                 <th>Timeout</th>
+                <th>API Key</th>
                 <th>Azioni</th>
             </tr>
         </thead>
@@ -82,6 +99,7 @@
                 <td>{{ prov.label | e }}</td>
                 <td>{{ prov.base_url | e }}</td>
                 <td>{{ prov.timeout_seconds }}s</td>
+                <td>{{ prov.api_key_name or '-' | e }}</td>
                 <td class="actions">
                     <a href="/config/providers/{{ prov.id }}/edit" class="btn-small">Modifica</a>
                     <form method="post" action="/config/providers/{{ prov.id }}/toggle" style="display:inline">
@@ -203,57 +221,74 @@
 <div class="config-section">
     <div style="display:flex;justify-content:space-between;align-items:center">
         <h2>Segreti / API Keys</h2>
-        <button onclick="document.getElementById('secrets-form').style.display='block'; this.style.display='none'" class="btn btn-small">Modifica Chiavi</button>
+        <button onclick="document.getElementById('new-secret-form').style.display='block'" class="btn btn-small">+ Nuova Chiave</button>
     </div>
 
-    <div id="secrets-form" class="modal-form" style="display:none">
-        <form method="post" action="/config/secrets/" class="form-inline">
-            <h3>Modifica API Keys</h3>
-            <div class="form-group">
-                <label>OPENROUTER_API_KEY</label>
-                <input type="password" name="OPENROUTER_API_KEY" value="{{ secret_plain.get('OPENROUTER_API_KEY', '') | e }}" placeholder="sk-or-...">
+    <!-- Form nuova chiave -->
+    <div id="new-secret-form" class="modal-form" style="display:none;margin-top:10px">
+        <form method="post" action="/config/secrets/new" class="form-inline">
+            <h3>Nuova chiave / API Key</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nome chiave *</label>
+                    <input type="text" name="key" required placeholder="es. LITELLM_API_KEY" style="text-transform:uppercase">
+                </div>
+                <div class="form-group">
+                    <label>Valore</label>
+                    <input type="password" name="value" placeholder="sk-...">
+                </div>
             </div>
-            <div class="form-group">
-                <label>OLLAMA_API_KEY</label>
-                <input type="password" name="OLLAMA_API_KEY" value="{{ secret_plain.get('OLLAMA_API_KEY', '') | e }}" placeholder="(opzionale)">
-            </div>
-            <div class="form-group">
-                <label>APP_SECRET_KEY</label>
-                <input type="password" name="APP_SECRET_KEY" value="{{ secret_plain.get('APP_SECRET_KEY', '') | e }}" placeholder="change-me">
-            </div>
-            <div style="margin-top:10px">
-                <button type="submit" class="btn">Salva Chiavi</button>
-                <button type="button" class="btn btn-small" onclick="document.getElementById('secrets-form').style.display='none'; document.querySelector('#config-section-secrets button').style.display='inline-block'" style="background:#888">Annulla</button>
+            <div style="margin-top:8px">
+                <button type="submit" class="btn">Crea</button>
+                <button type="button" class="btn btn-small" onclick="document.getElementById('new-secret-form').style.display='none'" style="background:#888">Annulla</button>
             </div>
         </form>
     </div>
 
+    <!-- Tabella chiavi dinamica -->
     <table style="margin-top:15px">
         <thead>
-            <tr><th>Chiave</th><th>Stato</th><th>Valore (mascherato)</th></tr>
+            <tr><th>Nome chiave</th><th>Stato</th><th>Valore (mascherato)</th><th>Azioni</th></tr>
         </thead>
         <tbody>
-            <tr>
-                <td>OPENROUTER_API_KEY</td>
-                <td>{{ 'Configurata' if secrets.get('OPENROUTER_API_KEY') and secrets['OPENROUTER_API_KEY'] != '(non impostata)' else 'Mancante' }}</td>
-                <td><code>{{ secrets.get('OPENROUTER_API_KEY', '(non impostata)') | e }}</code></td>
+            {% for sc in all_secrets %}
+            <tr id="row-{{ sc.key | e }}">
+                <td><strong>{{ sc.key | e }}</strong></td>
+                <td>{{ 'Configurata' if secrets.get(sc.key) and secrets[sc.key] != '(non impostata)' else 'Vuota' }}</td>
+                <td><code>{{ secrets.get(sc.key, '(non impostata)') | e }}</code></td>
+                <td class="actions">
+                    <button type="button" class="btn-small"
+                        onclick="document.getElementById('edit-{{ sc.key | e }}').style.display='block'">Modifica</button>
+                    {% if sc.key not in ['APP_SECRET_KEY'] %}
+                    <form method="post" action="/config/secrets/{{ sc.key | e }}/delete" style="display:inline"
+                        onsubmit="return confirm('Eliminare la chiave {{ sc.key | e }}?')">
+                        <button type="submit" class="btn-small btn-danger">Elimina</button>
+                    </form>
+                    {% endif %}
+                </td>
             </tr>
-            <tr>
-                <td>OLLAMA_API_KEY</td>
-                <td>{{ 'Configurata' if secrets.get('OLLAMA_API_KEY') and secrets['OLLAMA_API_KEY'] != '(non impostata)' else 'Mancante / Non richiesta' }}</td>
-                <td><code>{{ secrets.get('OLLAMA_API_KEY', '(non impostata)') | e }}</code></td>
+            <tr id="edit-{{ sc.key | e }}" style="display:none;background:#f9f9f9">
+                <td colspan="4">
+                    <form method="post" action="/config/secrets/{{ sc.key | e }}/update" class="form-inline" style="padding:8px 0">
+                        <div class="form-row" style="align-items:flex-end;gap:10px">
+                            <div class="form-group" style="margin:0;flex:1">
+                                <label style="font-size:11px">Nuovo valore per {{ sc.key | e }}</label>
+                                <input type="password" name="value" placeholder="Lascia vuoto per non modificare">
+                            </div>
+                            <button type="submit" class="btn btn-small">Salva</button>
+                            <button type="button" class="btn-small" style="background:#888"
+                                onclick="document.getElementById('edit-{{ sc.key | e }}').style.display='none'">Annulla</button>
+                        </div>
+                    </form>
+                </td>
             </tr>
-            <tr>
-                <td>APP_SECRET_KEY</td>
-                <td>{{ 'Configurata' if secrets.get('APP_SECRET_KEY') and secrets['APP_SECRET_KEY'] != '(non impostata)' else 'Default' }}</td>
-                <td><code>{{ secrets.get('APP_SECRET_KEY', '(non impostata)') | e }}</code></td>
-            </tr>
+            {% else %}
+            <tr><td colspan="4">Nessuna chiave configurata.</td></tr>
+            {% endfor %}
         </tbody>
     </table>
     {% if not secrets_available %}
-    <div class="warning" style="margin-top:10px">
-        Nessuna chiave API configurata. Clicca "Modifica Chiavi" per inserirle.
-    </div>
+    <div class="warning" style="margin-top:10px">Nessuna chiave API configurata. Clicca "+ Nuova Chiave" per aggiungerne una.</div>
     {% endif %}
 </div>
 

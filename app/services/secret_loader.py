@@ -9,28 +9,39 @@ def load_secrets(secrets_path: str = "secrets/secret.key"):
         db_secrets = db.query(SecretConfig).all()
         db.close()
 
-        desired_keys = ["OPENROUTER_API_KEY", "OLLAMA_API_KEY", "APP_SECRET_KEY"]
-        secrets = {}
-        for sk in desired_keys:
-            db_val = next((s for s in db_secrets if s.key == sk), None)
-            if db_val:
-                secrets[sk] = decrypt_value(db_val.value) or ""
+        secrets = {s.key: decrypt_value(s.value) or "" for s in db_secrets}
 
         if any(secrets.values()):
-            available = True
-        else:
-            file_secrets, available = _load_file(secrets_path)
-            secrets.update({k: v for k, v in file_secrets.items() if not secrets.get(k)})
-            if not available and not any(secrets.values()):
-                available = False
+            return secrets, True
 
-        return secrets, available
+        file_secrets, available = _load_file(secrets_path)
+        secrets.update({k: v for k, v in file_secrets.items() if not secrets.get(k)})
+        return secrets, available or bool(any(secrets.values()))
 
     except Exception:
         return _load_file(secrets_path)
 
 
 def get_api_key(provider: str) -> str | None:
+    # Prima: cerca la chiave associata al provider nel DB
+    try:
+        from ..database import SessionLocal
+        from ..models import ProviderConfig, SecretConfig
+        db = SessionLocal()
+        prov = db.query(ProviderConfig).filter(
+            ProviderConfig.name == provider,
+            ProviderConfig.enabled == True,
+        ).first()
+        if prov and prov.api_key_name:
+            sc = db.query(SecretConfig).filter(SecretConfig.key == prov.api_key_name).first()
+            db.close()
+            if sc:
+                return decrypt_value(sc.value) or None
+        db.close()
+    except Exception:
+        pass
+
+    # Fallback: convenzione nome per retrocompatibilità
     secrets, _ = load_secrets()
     if provider == "openrouter":
         return secrets.get("OPENROUTER_API_KEY", "") or None

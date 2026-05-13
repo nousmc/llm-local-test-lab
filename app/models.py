@@ -18,6 +18,7 @@ class ProviderConfig(Base):
     enabled = Column(Boolean, default=True)
     app_name = Column(String, nullable=True)
     site_url = Column(String, nullable=True)
+    api_key_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

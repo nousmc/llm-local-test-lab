@@ -12,26 +12,27 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 
 def _secret_context(db: Session):
-    secrets, available = load_secrets()
+    db_secrets = db.query(SecretConfig).order_by(SecretConfig.key).all()
     masked = {}
-    for key, val in secrets.items():
-        if val and len(val) > 4:
-            masked[key] = val[:4] + "*" * (len(val) - 8) + val[-4:] if len(val) > 8 else val[:2] + "**"
-        else:
-            masked[key] = val or "(non impostata)"
-
-    db_secrets = db.query(SecretConfig).all()
     plain = {}
     for ds in db_secrets:
-        plain[ds.key] = decrypt_value(ds.value) or ""
+        val = decrypt_value(ds.value) or ""
+        plain[ds.key] = val
+        if val and len(val) > 8:
+            masked[ds.key] = val[:4] + "*" * (len(val) - 8) + val[-4:]
+        elif val:
+            masked[ds.key] = val[:2] + "**"
+        else:
+            masked[ds.key] = "(non impostata)"
 
-    return masked, plain, available
+    available = bool(any(plain.values()))
+    return masked, plain, available, db_secrets
 
 
 @router.get("/", response_class=HTMLResponse)
 async def config_page(request: Request, db: Session = Depends(get_db)):
     config = load_config()
-    masked, plain, available = _secret_context(db)
+    masked, plain, available, all_secrets = _secret_context(db)
     providers = db.query(ProviderConfig).all()
     validator = db.query(ValidatorConfig).first()
 
@@ -43,6 +44,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
             "config": config,
             "secrets": masked,
             "secret_plain": plain,
+            "all_secrets": all_secrets,
             "secrets_available": available,
             "providers": providers,
             "validator": validator,
@@ -55,7 +57,7 @@ async def config_page(request: Request, db: Session = Depends(get_db)):
 @router.get("/providers/{provider_id}/edit", response_class=HTMLResponse)
 async def provider_edit_form(provider_id: int, request: Request, db: Session = Depends(get_db)):
     config = load_config()
-    masked, plain, available = _secret_context(db)
+    masked, plain, available, all_secrets = _secret_context(db)
     providers = db.query(ProviderConfig).all()
     validator = db.query(ValidatorConfig).first()
     edit_provider = db.query(ProviderConfig).filter(ProviderConfig.id == provider_id).first()
@@ -68,6 +70,7 @@ async def provider_edit_form(provider_id: int, request: Request, db: Session = D
             "config": config,
             "secrets": masked,
             "secret_plain": plain,
+            "all_secrets": all_secrets,
             "secrets_available": available,
             "providers": providers,
             "validator": validator,
@@ -81,7 +84,7 @@ async def provider_edit_form(provider_id: int, request: Request, db: Session = D
 @router.get("/validator/edit", response_class=HTMLResponse)
 async def validator_edit_form(request: Request, db: Session = Depends(get_db)):
     config = load_config()
-    masked, plain, available = _secret_context(db)
+    masked, plain, available, all_secrets = _secret_context(db)
     providers = db.query(ProviderConfig).all()
     validator = db.query(ValidatorConfig).first()
 
@@ -93,6 +96,7 @@ async def validator_edit_form(request: Request, db: Session = Depends(get_db)):
             "config": config,
             "secrets": masked,
             "secret_plain": plain,
+            "all_secrets": all_secrets,
             "secrets_available": available,
             "providers": providers,
             "validator": validator,
