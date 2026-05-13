@@ -22,11 +22,29 @@
         {% for run in runs %}
         <tr>
             <td>{{ run.id }}</td>
-            <td>{{ run.name | e }}</td>
+            <td><a href="/test-runs/{{ run.id }}">{{ run.name | e }}</a></td>
             <td><span class="status-{{ run.status }}">{{ run.status | e }}</span></td>
-            <td>{{ run.started_at if run.started_at else '-' }}</td>
-            <td>{{ run.completed_at if run.completed_at else '-' }}</td>
-            <td><a href="/test-runs/{{ run.id }}">Dettagli</a></td>
+            <td>{{ run.started_at.strftime('%d/%m/%Y %H:%M') if run.started_at else '-' }}</td>
+            <td>{{ run.completed_at.strftime('%d/%m/%Y %H:%M') if run.completed_at else '-' }}</td>
+            <td class="actions">
+                <a href="/test-runs/{{ run.id }}" class="btn-small">Dettagli</a>
+                {% if run.status == 'running' %}
+                <form method="post" action="/test-runs/{{ run.id }}/cancel" style="display:inline"
+                    onsubmit="return confirm('Cancellare la run in esecuzione #{{ run.id }}?')">
+                    <button type="submit" class="btn-small" style="background:#e67e22;color:#fff">Cancella</button>
+                </form>
+                {% endif %}
+                {% if run.status in ['completed', 'cancelled', 'failed'] %}
+                <form method="post" action="/test-runs/{{ run.id }}/rerun" style="display:inline"
+                    onsubmit="return confirm('Rieseguire tutti i test della run #{{ run.id }}? I risultati esistenti verranno azzerati.')">
+                    <button type="submit" class="btn-small" style="background:#27ae60;color:#fff">Riesegui</button>
+                </form>
+                <form method="post" action="/test-runs/{{ run.id }}/delete" style="display:inline"
+                    onsubmit="return confirm('Eliminare definitivamente la run #{{ run.id }} e tutti i suoi risultati?')">
+                    <button type="submit" class="btn-small btn-danger">Elimina</button>
+                </form>
+                {% endif %}
+            </td>
         </tr>
         {% else %}
         <tr><td colspan="6">Nessuna esecuzione</td></tr>

@@ -241,6 +241,72 @@ async def test_run_cancel(id: int, request: Request, db: Session = Depends(get_d
     return RedirectResponse(url=f"/test-runs/{id}", status_code=303)
 
 
+@router.post("/{id}/delete")
+async def test_run_delete(id: int, db: Session = Depends(get_db)):
+    run = db.query(TestRun).filter(TestRun.id == id).first()
+    if not run:
+        return RedirectResponse(url="/test-runs", status_code=303)
+
+    # Se è in running, cancella prima il task
+    if run.status == "running" and id in _running_tasks:
+        _running_tasks[id].cancel()
+        del _running_tasks[id]
+        await asyncio.sleep(0.3)
+
+    # Elimina in cascata: metric_results → validation_results → test_results → reports → run
+    result_ids = [r.id for r in db.query(TestResult.id).filter(TestResult.test_run_id == id).all()]
+    if result_ids:
+        db.query(MetricResult).filter(MetricResult.test_result_id.in_(result_ids)).delete(synchronize_session=False)
+        db.query(ValidationResult).filter(ValidationResult.test_result_id.in_(result_ids)).delete(synchronize_session=False)
+    db.query(TestResult).filter(TestResult.test_run_id == id).delete(synchronize_session=False)
+    from ..models import Report
+    db.query(Report).filter(Report.test_run_id == id).delete(synchronize_session=False)
+    db.delete(run)
+    db.commit()
+
+    return RedirectResponse(url="/test-runs", status_code=303)
+
+
+@router.post("/{id}/rerun")
+async def test_run_rerun_all(id: int, db: Session = Depends(get_db)):
+    """Riesegui TUTTI i test della run (reset completo)."""
+    run = db.query(TestRun).filter(TestRun.id == id).first()
+    if not run or run.status == "running":
+        return RedirectResponse(url=f"/test-runs/{id}", status_code=303)
+
+    # Reset completo: elimina metriche/validazioni, ripristina tutti i risultati a pending
+    all_results = db.query(TestResult).filter(TestResult.test_run_id == id).all()
+    result_ids = [r.id for r in all_results]
+    if result_ids:
+        db.query(MetricResult).filter(MetricResult.test_result_id.in_(result_ids)).delete(synchronize_session=False)
+        db.query(ValidationResult).filter(ValidationResult.test_result_id.in_(result_ids)).delete(synchronize_session=False)
+    for r in all_results:
+        r.status = "pending"
+        r.error_message = None
+        r.error_type = None
+        r.response_text = None
+        r.response_json = None
+        r.raw_response_json = None
+        r.latency_ms = None
+        r.prompt_tokens = None
+        r.completion_tokens = None
+        r.total_tokens = None
+        r.tokens_per_second = None
+        r.started_at = None
+        r.completed_at = None
+
+    run.status = "running"
+    run.started_at = datetime.now(timezone.utc)
+    run.completed_at = None
+    run.executive_report_text = None
+    retry_commit(db)
+
+    task = asyncio.create_task(execute_test_run(id))
+    _running_tasks[id] = task
+
+    return RedirectResponse(url=f"/test-runs/{id}", status_code=303)
+
+
 @router.post("/{id}/rerun-failed")
 async def test_run_rerun_failed(id: int, db: Session = Depends(get_db)):
     run = db.query(TestRun).filter(TestRun.id == id).first()

@@ -226,10 +226,21 @@ function renderResults(rows, showBench, runId) {
     tbody.innerHTML = html;
 }
 </script>
-{% elif run.status in ('completed', 'failed') %}
-<div style="margin:15px 0">
-    <form method="post" action="/test-runs/{{ run.id }}/rerun-failed" style="display:inline" onsubmit="return confirm('Rieseguire solo i falliti?')">
+{% elif run.status in ('completed', 'failed', 'cancelled') %}
+<div style="margin:15px 0;display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" action="/test-runs/{{ run.id }}/rerun" style="display:inline"
+        onsubmit="return confirm('Rieseguire TUTTI i test della run? I risultati esistenti verranno azzerati.')">
+        <button type="submit" class="btn btn-green">Riesegui Tutto</button>
+    </form>
+    {% if run.status in ('completed', 'failed') %}
+    <form method="post" action="/test-runs/{{ run.id }}/rerun-failed" style="display:inline"
+        onsubmit="return confirm('Rieseguire solo i test falliti?')">
         <button type="submit" class="btn">Riesegui Falliti</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/test-runs/{{ run.id }}/delete" style="display:inline"
+        onsubmit="return confirm('Eliminare definitivamente questa run e tutti i suoi risultati?')">
+        <button type="submit" class="btn btn-danger">Elimina Run</button>
     </form>
 </div>
 {% endif %}
