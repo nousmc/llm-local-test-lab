@@ -1,12 +1,38 @@
+# Secrets
 secrets/secret.key
 secrets/openrouter.txt
-secrets/*.Identifier
-tests/*
+
+# Database
 data/app.db
+data/app.db-shm
+data/app.db-wal
+
+# Generated data
 data/reports/*
 data/exports/*
+
+# Uploads
 app/uploads/*
+
+# Environment
 .env
-__pycache__/
-*.pyc
-README.pdf
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Test cache
+.pytest_cache/
+
+# Claude Code local settings
+.claude/
+
+# Windows/WSL Zone.Identifier artifacts
+*:Zone.Identifier
+*.Zone.Identifier
+
+# Binary assets not versioned
+*.pdf
+testrun-*.png
+dashboard-*.png
