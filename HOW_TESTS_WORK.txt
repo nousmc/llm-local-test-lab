@@ -218,32 +218,133 @@ La valutazione avviene in 4 fasi:
     - needs_review = true
     - validator_unavailable_warning registrato
 
-  FASE 4 - CALCOLO SCORE FINALE
+  FASE 4 - CALCOLO SCORE DETERMINISTICO PER TIPOLOGIA
 
-  Lo score deterministico ha una formula specifica per ogni tipologia.
-  Il final_score combina deterministico + validatore con pesi:
-    - Task strutturati puri: det=0.50, val=0.25, fmt=0.10
-    - Task ibridi: det=0.35, val=0.40, fmt=0.10
-    - Task semantici: det=0.30, val=0.45, fmt=0.10
-    + latenza 0.05, stabilita' 0.05, costo 0.05
+  Ogni tipologia ha una formula specifica:
+
+  CLASSIFICATION / DATA_EXTRACTION / OCR_EXTRACTION (task strutturati puri):
+    score = 0.25*json_validity + 0.25*schema_compliance + 0.50*field_accuracy
+    penalty = min(0.25, 0.05*missing_fields + 0.05*extra_fields + 0.05*incorrect_fields)
+    deterministic_score = max(0, score - penalty)
+
+  RAG_QA:
+    deterministic_score = 0.30*json_validity + 0.70*answer_absent_correctness
+
+  SUMMARIZATION:
+    deterministic_score = 0.30*json_validity + 0.70*max_words_respected
+
+  IMAGE_DESCRIPTION:
+    deterministic_score = 0.20*json_validity + 0.40*required_fields_present + 0.40*max_words_respected
+
+  CODE_ANALYSIS:
+    deterministic_score = 0.15*json_validity + 0.15*schema_compliance
+                        + 0.15*findings_schema_valid + 0.15*allowed_type_valid
+                        + 0.15*allowed_severity_valid + 0.05*language_compliance_deterministic
+    (massimo teorico: 0.80 — il resto viene dal validatore)
+
+  REFACTORING:
+    deterministic_score = 0.15*json_validity + 0.15*schema_compliance + 0.20*lexical_similarity
+    (massimo teorico: 0.50 — il resto viene dal validatore)
+
+  CODE_DOCUMENTATION:
+    score = 0.20*json_validity + 0.35*documentation_structure
+          + 0.35*heuristic_documentation_completeness + 0.10*style_compliance
+    penalty = 0.03*missing_doc_sections + 0.05*hallucinated_params
+            + 0.05*missing_documented_params + 0.10*hallucinated_exceptions
+            + 0.05*examples_schema_violation
+    deterministic_score = max(0, score - min(0.25, penalty))
+
+  SPEECH_TO_TEXT_POSTPROCESS:
+    score = 0.15*json_validity + 0.15*schema_compliance + 0.25*clean_transcript_present
+          + 0.15*action_items_schema_valid + 0.15*entities_schema_valid
+          + 0.15*(1 - min(filler_terms_remaining/10, 1.0))
+    penality_eco = 0.15 se prompt_echo_exact_indicator_found > 0
+    deterministic_score = max(0, score - penality_eco)
+
+  CONTEXTUAL_INSIGHT:
+    score = 0.15*json_validity + 0.15*schema_compliance + 0.15*insight_count_in_range
+          + 0.15*must_include_coverage + 0.10*min(references_to_context_count/2, 1.0)
+          + 0.10*follow_up_present
+    penalty = must_avoid_violation * 0.20
+    deterministic_score = max(0, score - min(0.25, penalty))
+
+  FALLBACK (tipologie non riconosciute):
+    deterministic_score = 0.15*json_validity + 0.25*exact_match + 0.60*semantic_similarity
+
+
+  FASE 5 - CALCOLO FINAL_SCORE
+
+  Il final_score combina deterministic_score + validator_score + format_score
+  + latenza + stabilita' + costo con PESI PROPORZIONALI alla CLASSE DEL TASK.
+  I pesi vengono normalizzati sul totale effettivo (il validatore potrebbe non
+  essere disponibile).
+
+  CLASSI E PESI:
+    STRUTTURATI PURI (classification, data_extraction, ocr_extraction):
+      det=0.50, val=0.25, fmt=0.10, lat=0.05, stab=0.05, cost=0.05
+
+    IBRIDI (code_analysis, code_documentation, refactoring,
+            speech_to_text_postprocess, contextual_insight):
+      det=0.35, val=0.40, fmt=0.10, lat=0.05, stab=0.05, cost=0.05
+
+    SEMANTICI (rag_qa, summarization, image_description):
+      det=0.30, val=0.45, fmt=0.10, lat=0.05, stab=0.05, cost=0.05
+
+  ALGORITMO:
+    1. Se error_type in (timeout, provider_unavailable): final_score = 0.0
+    2. Se deterministico perfetto (1.0) E validatore >= 0.90
+       E nessun errore critico: final_score = 1.0
+    3. Se deterministico perfetto MA validatore in conflitto (< 0.25):
+       - STRUTTURATI: final_score = max(0.90, deterministic_score)
+       - IBRIDI:      final_score = max(0.85, deterministic_score)
+       - SEMANTICI:   final_score = max(0.75, deterministic_score)
+    4. Calcolo standard: media ponderata dei componenti disponibili,
+       poi applicazione dei cap:
+       - JSON invalido:    cap = 0.30
+       - Schema violato:   cap = 0.50
+       - Refusal:          cap = 0.10
+
+  COMPONENTI MINORI (sempre inclusi nel calcolo standard):
+    - latency_score  = max(0, 1 - latency_ms / max_latency_ms_warning)
+    - stability_score = 1.0 se nessun errore, 0.0 altrimenti
+    - cost_score     = max(0, 1 - estimated_cost / 0.01)  [0.5 se non disponibile]
 
   Tre campi pass indipendenti:
-    - deterministic_passed: deterministic_score >= pass_threshold
+    - deterministic_passed: deterministic_score >= pass_threshold (default 0.80)
     - validator_passed: dal validatore (forzato false se JSON/schema invalido)
-    - final_passed: final_score >= pass_threshold
+    - final_passed: final_score >= pass_threshold (default 0.80) — CAMPO PRINCIPALE
 
   final_score_mode:
-    - "normal": validatore OK
-    - "validator_conflict_adjusted": validatore in conflitto col deterministico
-    - "validator_fallback": validatore non disponibile
+    - "normal":                    validatore OK, nessun conflitto
+    - "validator_conflict_adjusted": deterministico perfetto, validatore in disaccordo
+    - "validator_fallback":        validatore non disponibile
 
-  REGOLE DI PROTEZIONE:
-    - Se deterministico = 1.0 e validatore >= 0.90: final_score = 1.0
-    - Se deterministico perfetto ma validatore in disaccordo, floor varia:
-      0.90 (task strutturati), 0.85 (task ibridi), 0.75 (task semantici)
-    - Cap per errori gravi: JSON invalido 0.30, schema violato 0.50, refusal 0.10
-    - Hard gate: json_validity=0 o schema_compliance=0 forza validator_passed=false
-    - needs_review=true per task semantici/ibridi con validator_conflict
+  needs_review = true per task semantici/ibridi con validator_conflict o fallback
+
+
+  FASE 6 - SCORE PONDERATO (AGGREGATO PER MODELLO)
+
+  Il weighted_score misura la qualita' complessiva di un modello:
+
+    weighted_score = avg_final_score * (pass_rate / 100)
+
+  Dove:
+    - avg_final_score = media dei final_score di tutti i test del modello
+    - pass_rate       = % di test con final_score >= pass_threshold (default 0.80)
+
+  Un weighted_score alto richiede CONTEMPORANEAMENTE:
+    - score medio alto (il modello risponde bene)
+    - pass rate alta (il modello e' consistente)
+
+  Un modello con score medio 0.90 ma pass rate 40% ottiene:
+    weighted_score = 0.90 * 0.40 = 0.36 (sotto soglia)
+
+  Un modello con score medio 0.75 e pass rate 90% ottiene:
+    weighted_score = 0.75 * 0.90 = 0.675 (sopra soglia)
+
+  La soglia di accettabilita' del weighted_score (default 0.60) e'
+  configurabile in: Configurazione > Esecuzione & Soglie > Soglia score ponderato.
+  Nel grafico "Score ponderato": verde = sopra soglia, rosso = sotto soglia.
 
 
 7. IL CICLO DI VITA DI UNA RUN

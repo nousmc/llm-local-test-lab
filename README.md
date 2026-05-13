@@ -272,31 +272,63 @@ Temperature per modello modificabili da `/models/{id}/edit`.
 
 | Livello | Modalita | Decisivo? | Esempi |
 |---|---|---|---|
-| Deterministico | Calcolato da codice | Si (guardrail) | json_validity, field_accuracy, max_words_respected |
+| Deterministico | Calcolato da codice | Sì (guardrail) | json_validity, field_accuracy, max_words_respected |
 | Euristico | Calcolato da codice | No (diagnostico) | lexical_similarity, token_overlap |
-| LLM | Validatore | Si (task semantici/ibridi) | semantic_score, completeness, finding_accuracy |
+| LLM | Validatore | Sì (task semantici/ibridi) | semantic_score, completeness, finding_accuracy |
 
-### Score per tipologia
+### Score deterministico per tipologia
 
-Ogni tipologia ha una formula deterministica specifica. Il final_score pesa deterministico + validatore + formato + latenza/stabilita/costo:
+Ogni tipologia ha una formula specifica. I pesi sono normalizzati sul totale.
 
-- **Task strutturati puri** (classification, data_extraction, ocr): det=50%, val=25%, fmt=10%
-- **Task ibridi** (code_analysis, code_documentation, refactoring, STT): det=35%, val=40%, fmt=10%
-- **Task semantici** (rag_qa, summarization, image_description): det=30%, val=45%, fmt=10%
+| Tipologia | Formula deterministica |
+|---|---|
+| **classification / data_extraction / ocr_extraction** | `0.25·json_validity + 0.25·schema_compliance + 0.50·field_accuracy − penalità(campi mancanti/extra/errati)` |
+| **rag_qa** | `0.30·json_validity + 0.70·answer_absent_correctness` |
+| **summarization** | `0.30·json_validity + 0.70·max_words_respected` |
+| **image_description** | `0.20·json_validity + 0.40·required_fields_present + 0.40·max_words_respected` |
+| **code_analysis** | `0.15·json_validity + 0.15·schema + 0.15·findings_schema_valid + 0.15·allowed_type_valid + 0.15·allowed_severity_valid + 0.05·language_compliance` |
+| **refactoring** | `0.15·json_validity + 0.15·schema + 0.20·lexical_similarity` |
+| **code_documentation** | `0.20·json_validity + 0.35·documentation_structure + 0.35·completeness + 0.10·style − penalità(sezioni/params/eccezioni)` |
+| **speech_to_text_postprocess** | `0.15·json_validity + 0.15·schema + 0.25·clean_transcript_present + 0.15·action_schema + 0.15·entity_schema + 0.15·(1−filler/10) − 0.15 se prompt_echo` |
+| **contextual_insight** | `0.15·json_validity + 0.15·schema + 0.15·insight_count_in_range + 0.15·must_include_coverage + 0.10·min(refs/2,1) + 0.10·follow_up_present − penalità(must_avoid)` |
+
+### Score finale (final_score)
+
+Il `final_score` combina deterministico + validatore + formato + latenza/stabilità/costo con pesi proporzionali alla **classe del task**:
+
+| Classe | Tipologie | det | val | fmt | lat | stab | cost |
+|---|---|---|---|---|---|---|---|
+| Strutturati puri | classification, data_extraction, ocr_extraction | 50% | 25% | 10% | 5% | 5% | 5% |
+| Ibridi | code_analysis, code_documentation, refactoring, STT, contextual_insight | 35% | 40% | 10% | 5% | 5% | 5% |
+| Semantici | rag_qa, summarization, image_description | 30% | 45% | 10% | 5% | 5% | 5% |
+
+I pesi vengono **normalizzati** sul totale effettivo (il validatore potrebbe non essere disponibile).
+
+**Regole speciali:**
+- Deterministico perfetto (1.0) + validatore ≥ 0.90 → `final_score = 1.0`
+- Deterministico perfetto ma validatore in disaccordo → floor: **0.90** (strutturati), **0.85** (ibridi), **0.75** (semantici)
+- JSON invalido → cap **0.30** | schema violato → cap **0.50** | refusal → cap **0.10**
+- Errore provider (timeout/unavailable) → `final_score = 0.0`
+
+**Modalità scoring** (`final_score_mode`):
+- `normal` — validatore disponibile, nessun conflitto
+- `validator_conflict_adjusted` — deterministico perfetto ma validatore disaccorda, applicato floor
+- `validator_fallback` — validatore non disponibile, scoring solo deterministico
+
+### Score ponderato (aggregato per modello)
+
+```
+weighted_score = avg_final_score × (pass_rate / 100)
+```
+
+Dove `pass_rate` = percentuale di test con `final_score ≥ pass_threshold` (default **0.80**).  
+La **soglia di accettabilità** per il weighted_score è configurabile (default **0.60**) in `Configurazione → Esecuzione & Soglie`. Modelli sopra soglia sono considerati "accettabili" per il deployment.
 
 ### Tre campi pass
 
-- `deterministic_passed`: deterministic_score >= soglia (0.80)
+- `deterministic_passed`: `deterministic_score ≥ 0.80`
 - `validator_passed`: dal validatore (forzato false se JSON/schema invalido)
-- `final_passed`: final_score >= soglia (0.80) — il campo principale
-
-### Regole di protezione
-
-- Perfetto deterministico (1.0) + validatore >= 0.90 → final = 1.0
-- Perfetto deterministico ma validatore in disaccordo → floor: 0.90 (strutturati), 0.85 (ibridi), 0.75 (semantici)
-- JSON invalido cap 0.30, schema violato cap 0.50, refusal cap 0.10
-- `final_score_mode`: "normal", "validator_conflict_adjusted", "validator_fallback"
-- `needs_review`: true per task semantici/ibridi con validator_conflict o validator_fallback
+- `final_passed`: `final_score ≥ 0.80` — il campo principale usato per pass_rate e ranking
 
 ---
 
