@@ -293,21 +293,93 @@
 </div>
 
 <div class="config-section">
-    <h2>Esecuzione</h2>
-    <table>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Esecuzione &amp; Soglie</h2>
+        <button type="button" class="btn btn-small"
+            onclick="document.getElementById('exec-form').style.display='block';this.style.display='none'">Modifica</button>
+    </div>
+
+    <div id="exec-form" class="modal-form" style="display:none;margin-top:10px">
+        <form method="post" action="/config/execution" class="form-inline">
+            <h3>Parametri di esecuzione</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Parallelismo</label>
+                    <input type="number" name="parallelism" value="{{ config.execution.parallelism }}" min="1" max="16">
+                    <div class="field-help">Numero di test eseguiti in parallelo</div>
+                </div>
+                <div class="form-group">
+                    <label>Tentativi retry</label>
+                    <input type="number" name="retry_attempts" value="{{ config.execution.retry_attempts }}" min="0" max="5">
+                </div>
+                <div class="form-group">
+                    <label>Backoff retry (s)</label>
+                    <input type="number" name="retry_backoff_seconds" value="{{ config.execution.retry_backoff_seconds }}" min="0" max="30">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Stop su errore provider</label>
+                    <select name="stop_on_provider_error">
+                        <option value="false" {% if not config.execution.stop_on_provider_error %}selected{% endif %}>No</option>
+                        <option value="true" {% if config.execution.stop_on_provider_error %}selected{% endif %}>Si</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3 style="margin-top:16px">Soglie</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Soglia pass score</label>
+                    <input type="number" name="default_pass_score" value="{{ config.thresholds.default_pass_score }}" step="0.05" min="0" max="1">
+                    <div class="field-help">Score minimo per considerare un test superato</div>
+                </div>
+                <div class="form-group">
+                    <label>Soglia score ponderato</label>
+                    <input type="number" name="weighted_score_threshold" value="{{ config.thresholds.weighted_score_threshold | default(0.6) }}" step="0.05" min="0" max="1">
+                    <div class="field-help">avg_score × pass_rate — soglia accettabilità modello</div>
+                </div>
+                <div class="form-group">
+                    <label>Latenza warning (ms)</label>
+                    <input type="number" name="max_latency_ms_warning" value="{{ config.thresholds.max_latency_ms_warning }}" min="1000" step="1000">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>JSON validity richiesta</label>
+                    <select name="json_validity_required">
+                        <option value="true" {% if config.thresholds.json_validity_required %}selected{% endif %}>Si</option>
+                        <option value="false" {% if not config.thresholds.json_validity_required %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:10px">
+                <button type="submit" class="btn">Salva</button>
+                <button type="button" class="btn btn-small" style="background:#888"
+                    onclick="document.getElementById('exec-form').style.display='none';document.querySelector('.config-section button.btn-small').style.display='inline-block'">Annulla</button>
+            </div>
+        </form>
+    </div>
+
+    <table style="margin-top:10px">
         <tr><th>Parametro</th><th>Valore</th></tr>
         <tr><td>Parallelismo</td><td>{{ config.execution.parallelism }}</td></tr>
-        <tr><td>Retry</td><td>{{ config.execution.retry_attempts }}</td></tr>
-        <tr><td>Soglia pass</td><td>{{ config.thresholds.default_pass_score }}</td></tr>
+        <tr><td>Retry tentativi</td><td>{{ config.execution.retry_attempts }}</td></tr>
+        <tr><td>Backoff retry</td><td>{{ config.execution.retry_backoff_seconds }}s</td></tr>
+        <tr><td>Stop su errore provider</td><td>{{ 'Si' if config.execution.stop_on_provider_error else 'No' }}</td></tr>
+        <tr><td>Soglia pass score</td><td>{{ config.thresholds.default_pass_score }}</td></tr>
+        <tr><td>Soglia score ponderato</td><td>{{ config.thresholds.weighted_score_threshold | default(0.6) }}</td></tr>
+        <tr><td>Latenza warning</td><td>{{ config.thresholds.max_latency_ms_warning }} ms</td></tr>
+        <tr><td>JSON validity richiesta</td><td>{{ 'Si' if config.thresholds.json_validity_required else 'No' }}</td></tr>
     </table>
 </div>
 
 <div class="config-section">
-    <h2>Metriche</h2>
-    <p>{{ config.metrics.enabled | join(', ') }}</p>
+    <h2>Metriche attive</h2>
+    <p style="font-size:13px;color:#555">{{ config.metrics.enabled | join(', ') }}</p>
 </div>
 
 <form method="post" action="/config/reload" style="margin-top:20px">
-    <button type="submit" class="btn">Ricarica Configurazione</button>
+    <button type="submit" class="btn">Ricarica Configurazione da File</button>
 </form>
 {% endblock %}

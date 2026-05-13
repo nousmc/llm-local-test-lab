@@ -124,3 +124,25 @@ def reload_config():
     global _config_cache
     _config_cache = None
     return load_config(_config_path or "config/config.yaml")
+
+
+def save_config_sections(updates: dict, config_path: str = "config/config.yaml") -> bool:
+    """Aggiorna una o più sezioni del config.yaml e invalida la cache.
+
+    updates = {"execution": {...}, "thresholds": {...}}
+    """
+    path = Path(config_path)
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+        for section, values in updates.items():
+            if section not in data:
+                data[section] = {}
+            if isinstance(data[section], dict):
+                data[section].update(values)
+            else:
+                data[section] = values
+        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False))
+        reload_config()
+        return True
+    except Exception:
+        return False
