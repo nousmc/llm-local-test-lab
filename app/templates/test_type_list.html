@@ -3,26 +3,144 @@
 {% block content %}
 <h1>Tipologie Test</h1>
 
+<button class="btn" onclick="document.getElementById('add-type-form').style.display='block';this.style.display='none'">Nuova Tipologia</button>
+
+<div id="add-type-form" style="display:none;margin:12px 0;background:#f9f9f9;padding:12px;border-radius:4px">
+    <form method="post" action="/test-types" class="form-inline">
+        <input type="hidden" name="redirect" value="/test-types">
+        <div class="form-row">
+            <div class="form-group">
+                <label>ID *</label>
+                <input type="text" name="id" required>
+                <div class="field-help">Identificativo univoco (es. <code>classification</code>). Non modificabile dopo la creazione.</div>
+            </div>
+            <div class="form-group">
+                <label>Label *</label>
+                <input type="text" name="label" required>
+                <div class="field-help">Nome visualizzato nell'interfaccia (es. "Classificazione").</div>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Schema Atteso</label>
+                <input type="text" name="expected_schema">
+                <div class="field-help">Nome dello schema JSON per la validazione dell'output (es. <code>classification_expected</code>).</div>
+            </div>
+            <div class="form-group">
+                <label>Abilitato</label>
+                <select name="enabled"><option value="true">Si</option><option value="false">No</option></select>
+                <div class="field-help">Se <b>Si</b>, i test case di questo tipo vengono eseguiti.</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Template JSON atteso (precompilato per nuovi test case)</label>
+            <textarea name="expected_json_template" rows="5" style="font-family:monospace;font-size:11px"></textarea>
+            <div class="field-help">JSON template per il campo "Risultato atteso (JSON)" dei nuovi test case. Esempio: <code>{"schema":{"label":"string"},"expected":{"label":"..."},"required_fields":["label"],"allowed_labels":["..."]}</code></div>
+        </div>
+        <div class="form-group">
+            <label>Formato risposta (JSON mostrato nel prompt)</label>
+            <textarea name="answer_format_template" rows="6" style="font-family:monospace;font-size:11px"></textarea>
+            <div class="field-help">Blocco JSON che appare nel prompt dopo "Rispondi ESCLUSIVAMENTE con un JSON valido nel seguente formato:". Mostra al modello la struttura attesa dell'output.</div>
+        </div>
+        <button type="submit" class="btn">Salva</button>
+        <button type="button" class="btn btn-small" onclick="document.getElementById('add-type-form').style.display='none'" style="background:#888">Annulla</button>
+    </form>
+</div>
+
+<div id="edit-type-form" style="display:none;margin:12px 0;background:#fff3cd;padding:12px;border-radius:4px">
+    <form method="post" id="edit-type-f" class="form-inline">
+        <input type="hidden" name="redirect" value="/test-types">
+        <div class="form-row">
+            <div class="form-group">
+                <label>ID</label>
+                <input type="text" id="et-id" readonly style="background:#eee">
+                <div class="field-help">L'ID non puo' essere modificato.</div>
+            </div>
+            <div class="form-group">
+                <label>Label *</label>
+                <input type="text" id="et-label" name="label" required>
+                <div class="field-help">Nome visualizzato. La modifica non altera i test case esistenti.</div>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Schema Atteso</label>
+                <input type="text" id="et-schema" name="expected_schema">
+                <div class="field-help">Nome dello schema JSON di validazione.</div>
+            </div>
+            <div class="form-group">
+                <label>Abilitato</label>
+                <select id="et-enabled" name="enabled"><option value="true">Si</option><option value="false">No</option></select>
+                <div class="field-help">Disabilitare esclude tutti i test case dalle esecuzioni.</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Template JSON atteso</label>
+            <textarea id="et-template" name="expected_json_template" rows="5" style="font-family:monospace;font-size:11px"></textarea>
+            <div class="field-help">Template JSON di default per i nuovi test case di questo tipo.</div>
+        </div>
+        <div class="form-group">
+            <label>Formato risposta (JSON mostrato nel prompt)</label>
+            <textarea id="et-answer-format" name="answer_format_template" rows="6" style="font-family:monospace;font-size:11px"></textarea>
+            <div class="field-help">Blocco JSON del formato risposta. Modificabile.</div>
+        </div>
+        <button type="submit" class="btn">Aggiorna</button>
+        <button type="button" class="btn btn-small" onclick="document.getElementById('edit-type-form').style.display='none'" style="background:#888">Annulla</button>
+    </form>
+</div>
+
 <table>
     <thead>
         <tr>
             <th>ID</th>
             <th>Label</th>
             <th>Schema Atteso</th>
+            <th style="max-width:180px">Template JSON</th>
+            <th style="max-width:180px">Formato risposta</th>
             <th>Abilitato</th>
+            <th>Azioni</th>
         </tr>
     </thead>
     <tbody>
         {% for tt in test_types %}
-        <tr>
+        <tr{% if not tt.enabled %} style="opacity:0.5"{% endif %}>
             <td>{{ tt.id | e }}</td>
             <td>{{ tt.label | e }}</td>
-            <td>{{ tt.expected_schema | e }}</td>
+            <td>{{ tt.expected_schema or '' | e }}</td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:10px" title="{{ tt.expected_json_template or '' | e }}">{{ (tt.expected_json_template or '')[:60] | e }}</td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:10px" title="{{ tt.answer_format_template or '' | e }}">{{ (tt.answer_format_template or '')[:60] | e }}</td>
             <td>{{ 'Si' if tt.enabled else 'No' }}</td>
+            <td class="actions">
+                <button class="btn-small" onclick="editType(this)" data-id="{{ tt.id | e }}" data-label="{{ tt.label | e }}" data-schema="{{ tt.expected_schema or '' | e }}" data-template="{{ tt.expected_json_template or '' | e }}" data-answer="{{ tt.answer_format_template or '' | e }}" data-enabled="{{ 'true' if tt.enabled else 'false' }}">Modifica</button>
+                <form method="post" action="/test-types/{{ tt.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare tipo {{ tt.id }}? I test case associati saranno eliminati.')">
+                    <input type="hidden" name="redirect" value="/test-types">
+                    <button type="submit" class="btn-small btn-danger">Elimina</button>
+                </form>
+            </td>
         </tr>
         {% else %}
-        <tr><td colspan="4">Nessuna tipologia configurata.</td></tr>
+        <tr><td colspan="7">Nessuna tipologia configurata.</td></tr>
         {% endfor %}
     </tbody>
 </table>
+
+<style>
+.field-help { font-size: 11px; color: #666; margin-top: 3px; line-height: 1.4; }
+.field-help code { background: #e8e8e8; padding: 0 3px; border-radius: 2px; font-size: 10px; }
+</style>
+
+<script>
+function editType(el) {
+    var id = el.getAttribute('data-id');
+    document.getElementById('edit-type-form').style.display = 'block';
+    document.getElementById('et-id').value = id;
+    document.getElementById('et-label').value = el.getAttribute('data-label');
+    document.getElementById('et-schema').value = el.getAttribute('data-schema');
+    document.getElementById('et-template').value = el.getAttribute('data-template');
+    document.getElementById('et-answer-format').value = el.getAttribute('data-answer');
+    document.getElementById('et-enabled').value = el.getAttribute('data-enabled');
+    document.getElementById('edit-type-f').action = '/test-types/' + id + '/update';
+    document.getElementById('edit-type-form').scrollIntoView({behavior:'smooth'});
+}
+</script>
 {% endblock %}

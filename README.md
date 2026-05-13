@@ -1,6 +1,6 @@
 # LLM Local Test Lab
 
-**v0.1.3** — Piattaforma di benchmark per modelli LLM locali (Ollama) e remoti (OpenRouter). Permette di creare, eseguire e analizzare test strutturati su 11 tipologie tecniche, organizzati in 19 domini applicativi, con validazione automatica tramite modello giudice, **benchmark multi-temperatura con ripetizioni**, e reportistica completa.
+**v0.2.0** — Piattaforma di benchmark per modelli LLM locali (Ollama) e remoti (OpenRouter). Permette di creare, eseguire e analizzare test strutturati su 11 tipologie tecniche, organizzati in 19 domini applicativi, con validazione automatica tramite modello giudice, **benchmark multi-temperatura con ripetizioni**, e reportistica completa.
 
 ```
 Copyright 2026 Manuel Cavalieri

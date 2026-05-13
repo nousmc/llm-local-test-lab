@@ -374,3 +374,4 @@ thresholds:
   default_pass_score: 0.80
   json_validity_required: true
   max_latency_ms_warning: 60000
+  weighted_score_threshold: 0.6

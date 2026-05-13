@@ -90,6 +90,20 @@ def get_thresholds_config() -> dict:
     return config.get("thresholds", {})
 
 
+def get_weighted_score_threshold() -> float:
+    """Restituisce la soglia per il weighted score dalle configurazioni.
+
+    Il weighted score e calcolato come avg_score * pass_rate e confrontato
+    con questa soglia per determinare se un modello e accettabile.
+
+    Returns:
+        La soglia come float (default 0.6).
+    """
+    config = load_config()
+    thresholds = config.get("thresholds", {})
+    return float(thresholds.get("weighted_score_threshold", 0.6))
+
+
 def ensure_directories(config_path: str = "config/config.yaml") -> None:
     config = load_config(config_path)
     paths = [

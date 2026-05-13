@@ -185,9 +185,11 @@ function renderCharts(cd) {
     var cs = cd.model_scores; var cp = cd.model_pass_rate; var cl = cd.model_latency;
     var ct = cd.test_type_scores; var ctm = cd.test_type_model_datasets;
     var csl = cd.library_scores; var clp = cd.library_pass_rate; var clm = cd.library_model_datasets;
+    var cw = cd.model_weighted_scores;
     if (cs && cs.labels && cs.labels.length > 0) makeBarChart('chart-run-scores', cs.labels, cs.data, 'Score', 'rgba(34,139,34,0.7)');
     if (cp && cp.labels && cp.labels.length > 0) makeBarChart('chart-run-pass', cp.labels, cp.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
     if (cl && cl.labels && cl.labels.length > 0) makeBarChart('chart-run-latency', cl.labels, cl.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
+    if (cw && cw.labels && cw.labels.length > 0) makeWeightedScoreChart('chart-run-weighted', cw.labels, cw.data, {{ weighted_score_threshold }});
     if (ct && ct.labels && ct.labels.length > 0) makeBarChart('chart-run-types', ct.labels, ct.data, 'Score per tipo', 'rgba(153,102,255,0.7)');
     if (ctm && ctm.length > 0 && cd.test_type_model_labels) makeGroupedBarChart('chart-run-type-models', cd.test_type_model_labels, ctm);
     if (csl && csl.labels && csl.labels.length > 0) makeBarChart('chart-run-lib-scores', csl.labels, csl.data, 'Score', 'rgba(34,139,34,0.7)');
@@ -242,6 +244,13 @@ function renderResults(rows, showBench, runId) {
         <h3>Pass rate per modello</h3>
         <canvas id="chart-run-pass"></canvas>
         <p class="chart-desc">Percentuale di test superati (score >= 0.80) per ciascun modello nella run corrente.</p>
+    </div>
+</div>
+<div class="charts-row">
+    <div class="chart-container" style="grid-column: 1 / -1">
+        <h3>Score ponderato per modello (score_medio * pass_rate)</h3>
+        <canvas id="chart-run-weighted"></canvas>
+        <p class="chart-desc">Score medio corretto per il tasso di superamento. Modelli sopra soglia ({{ weighted_score_threshold }}) in verde, sotto in rosso. La linea tratteggiata indica la soglia di accettabilita.</p>
     </div>
 </div>
 <div class="charts-row">
@@ -473,9 +482,11 @@ function renderCharts(cd) {
     var cs = cd.model_scores; var cp = cd.model_pass_rate; var cl = cd.model_latency;
     var ct = cd.test_type_scores; var ctm = cd.test_type_model_datasets;
     var csl = cd.library_scores; var clp = cd.library_pass_rate; var clm = cd.library_model_datasets;
+    var cw = cd.model_weighted_scores;
     if (cs.labels.length > 0) makeBarChart('chart-run-scores', cs.labels, cs.data, 'Score', 'rgba(34,139,34,0.7)');
     if (cp && cp.labels && cp.labels.length > 0) makeBarChart('chart-run-pass', cp.labels, cp.data, 'Pass Rate %', 'rgba(54,162,235,0.7)');
     if (cl && cl.labels && cl.labels.length > 0) makeBarChart('chart-run-latency', cl.labels, cl.data, 'Latenza (ms)', 'rgba(255,159,64,0.7)');
+    if (cw && cw.labels && cw.labels.length > 0) makeWeightedScoreChart('chart-run-weighted', cw.labels, cw.data, {{ weighted_score_threshold }});
     if (ct && ct.labels && ct.labels.length > 0) makeBarChart('chart-run-types', ct.labels, ct.data, 'Score per tipo', 'rgba(153,102,255,0.7)');
     if (ctm && ctm.length > 0 && cd.test_type_model_labels) makeGroupedBarChart('chart-run-type-models', cd.test_type_model_labels, ctm);
     if (csl && csl.labels && csl.labels.length > 0) makeBarChart('chart-run-lib-scores', csl.labels, csl.data, 'Score', 'rgba(34,139,34,0.7)');

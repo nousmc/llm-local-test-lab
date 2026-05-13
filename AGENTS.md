@@ -213,6 +213,36 @@ No linter, formatter, typechecker, pre-commit, or CI. No `pyproject.toml`, `pyte
 
 Codebase is in Italian (comments, UI, docstrings, labels). Test expectations and variable names are in English.
 
+## Documentation (CRITICAL RULE)
+
+**Ogni funzione, metodo e classe deve essere documentato con docstring in stile Google.**
+
+```python
+def nome_funzione(param1: str, param2: int = 0) -> bool:
+    """Breve descrizione di cosa fa la funzione.
+
+    Longer description if needed. Multiple lines.
+
+    Args:
+        param1: Descrizione del primo parametro.
+        param2: Descrizione del secondo parametro. Default 0.
+
+    Returns:
+        Descrizione del valore restituito.
+
+    Raises:
+        ValueError: Quando e perche viene sollevata.
+    """
+```
+
+Regole:
+- **Moduli**: docstring all'inizio del file che descrive lo scopo del modulo.
+- **Classi**: docstring con descrizione, attributi principali ed eventuali note d'uso.
+- **Funzioni/Metodi**: docstring con descrizione, Args, Returns, Raises (se applicabile).
+- **Funzioni interne/helper**: docstring anche se brevi (almeno una riga).
+- **Route handler FastAPI**: docstring che descrive l'endpoint, i parametri e la risposta.
+- **Niente codice senza docstring**: ogni funzione pubblica o privata deve averla.
+
 ## Test suite
 
 - `tests/__init__.py` is empty. Tests import from `app.services.*` using absolute paths.

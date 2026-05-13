@@ -29,6 +29,7 @@ from .metrics import (
 from .prompt_builder import (
     PROMPT_TEMPLATES,
     MESSAGE_CONTAINER_TEMPLATE,
+    ANSWER_FORMAT_DEFAULTS,
     ST_HEADER,
     _extract_expected_schema,
     _build_field_list,
@@ -37,6 +38,10 @@ from .prompt_builder import (
     _get_constraints_text,
     _get_format_constraint,
     _get_length_constraint,
+    _format_custom_rules,
+    _DEFAULT_CI_INSTRUCTIONS,
+    _DEFAULT_CA_INSTRUCTIONS,
+    _DEFAULT_STT_INSTRUCTIONS,
     validate_prompt,
 )
 
@@ -44,7 +49,9 @@ BENCHMARK_PROMPT_TEMPLATE = ST_HEADER
 
 
 def _render_prompt_template(template: str, test_case: TestCase, test_type: TestType, expected: dict) -> str:
+    _tid = (test_type.id if test_type else None) or test_case.test_type_id
     replacements = {
+        "answer_format": expected.get("answer_format", ANSWER_FORMAT_DEFAULTS.get(_tid, "{}")),
         "test_type": test_type.label if test_type else test_case.test_type_id,
         "instructions": test_case.description or (test_type.label if test_type else test_case.test_type_id),
         "input_text": test_case.input_text or "",
@@ -57,10 +64,14 @@ def _render_prompt_template(template: str, test_case: TestCase, test_type: TestT
         "format_constraint": _get_format_constraint(expected),
         "length_constraint": _get_length_constraint(expected),
         "style": expected.get("style", "descrizione_neutra"),
-        "language": expected.get("language", "it"),
+        "language": expected.get("code_language", expected.get("language", "it")),
         "doc_style": expected.get("style", "docstring_google"),
         "answer_absent_rule": "IMPORTANTE: se la risposta NON e presente nel contesto, imposta answer_absent a true e lascia answer_text vuoto."
         if expected.get("answer_absent") is not None else "",
+        "custom_rules": _format_custom_rules(getattr(test_case, "rules", None)),
+        "ci_instructions": expected.get("ci_instructions", _DEFAULT_CI_INSTRUCTIONS),
+        "ca_instructions": expected.get("ca_instructions", _DEFAULT_CA_INSTRUCTIONS),
+        "stt_instructions": expected.get("stt_instructions", _DEFAULT_STT_INSTRUCTIONS),
     }
     prompt = template
     for key, value in replacements.items():

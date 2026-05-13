@@ -93,6 +93,9 @@ def _sync_config_to_db():
 
         _migrate_validation_result_columns(db)
         _migrate_benchmark_columns(db)
+        _migrate_test_case_rules_column(db)
+        _migrate_test_type_template_column(db)
+        _migrate_test_type_answer_format_column(db)
 
         existing_providers = db.query(ProviderConfig).count()
         existing_validators = db.query(ValidatorConfig).count()
@@ -201,18 +204,21 @@ def _sync_config_to_db():
                 db.commit()
                 print(f"Backfilled benchmark temps for {len(models_with_null_temps)} existing models")
 
-        # Sync test types — seed only if table is empty
+        # Sync test types — try YAML first, fallback to config.yaml
         if existing_types == 0:
-            test_types_cfg = get_test_types_from_config()
-            for tt in test_types_cfg:
-                ttype = TestType(
-                    id=tt["id"],
-                    label=tt.get("label", tt["id"]),
-                    description=tt.get("description"),
-                    expected_schema=tt.get("expected_schema"),
-                    enabled=True,
-                )
-                db.add(ttype)
+            from .services.seed_test_cases import seed_test_types_from_yaml
+            types_from_yaml = seed_test_types_from_yaml(db)
+            if types_from_yaml < 0:
+                test_types_cfg = get_test_types_from_config()
+                for tt in test_types_cfg:
+                    ttype = TestType(
+                        id=tt["id"],
+                        label=tt.get("label", tt["id"]),
+                        description=tt.get("description"),
+                        expected_schema=tt.get("expected_schema"),
+                        enabled=True,
+                    )
+                    db.add(ttype)
         else:
             existing_ids = {row[0] for row in db.query(TestType.id).all()}
             test_types_cfg = get_test_types_from_config()
@@ -234,23 +240,35 @@ def _sync_config_to_db():
         type_count = db.query(TestType).count()
         val_count = db.query(ValidatorConfig).count()
 
-        from .services.seed_test_cases import seed_test_cases
-        seeded = seed_test_cases(db)
-        if seeded > 0:
-            db.commit()
-
         from .services.seed_libraries import (
             seed_libraries,
             seed_library_test_cases,
+            seed_libraries_from_yaml,
             migrate_legacy_tests_to_general_library,
             migrate_academy_library_to_stem,
         )
-        libs_added = seed_libraries(db)
+        libs_from_yaml = seed_libraries_from_yaml(db)
+        if libs_from_yaml >= 0:
+            libs_added = libs_from_yaml
+        else:
+            libs_added = seed_libraries(db)
         if libs_added > 0:
             db.commit()
-        lib_cases_added = seed_library_test_cases(db)
+
+        from .services.seed_test_cases import seed_test_cases, seed_test_cases_from_yaml
+
+        yaml_seeded = seed_test_cases_from_yaml(db)
+        if yaml_seeded >= 0:
+            seeded = yaml_seeded
+            lib_cases_added = 0
+        else:
+            seeded = seed_test_cases(db)
+            lib_cases_added = seed_library_test_cases(db)
+        if seeded > 0:
+            db.commit()
         if lib_cases_added > 0:
             db.commit()
+
         migrated = migrate_legacy_tests_to_general_library(db)
         if migrated > 0:
             db.commit()
@@ -330,6 +348,48 @@ def _migrate_benchmark_columns(db):
     except Exception as e:
         db.rollback()
         print(f"Migration warning (benchmark columns): {e}")
+
+
+def _migrate_test_case_rules_column(db):
+    from sqlalchemy import text
+    try:
+        columns = db.execute(text("PRAGMA table_info(test_cases)")).fetchall()
+        col_names = [c[1] for c in columns]
+        if "rules" not in col_names:
+            db.execute(text("ALTER TABLE test_cases ADD COLUMN rules TEXT"))
+            print("Migration: added column test_cases.rules")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (test_cases.rules): {e}")
+
+
+def _migrate_test_type_template_column(db):
+    from sqlalchemy import text
+    try:
+        columns = db.execute(text("PRAGMA table_info(test_types)")).fetchall()
+        col_names = [c[1] for c in columns]
+        if "expected_json_template" not in col_names:
+            db.execute(text("ALTER TABLE test_types ADD COLUMN expected_json_template TEXT"))
+            print("Migration: added column test_types.expected_json_template")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (test_types.expected_json_template): {e}")
+
+
+def _migrate_test_type_answer_format_column(db):
+    from sqlalchemy import text
+    try:
+        columns = db.execute(text("PRAGMA table_info(test_types)")).fetchall()
+        col_names = [c[1] for c in columns]
+        if "answer_format_template" not in col_names:
+            db.execute(text("ALTER TABLE test_types ADD COLUMN answer_format_template TEXT"))
+            print("Migration: added column test_types.answer_format_template")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (test_types.answer_format_template): {e}")
 
 
 if __name__ == "__main__":

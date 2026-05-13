@@ -1,0 +1,995 @@
+{% extends "base.html" %}
+{% block title %}{% if edit_mode %}Modifica Test Case{% else %}Nuovo Test Case{% endif %}{% endblock %}
+{% block content %}
+<style>
+.tc-grid{display:grid;grid-template-columns:55% 43%;gap:2%;align-items:start}
+.tc-preview-col{position:sticky;top:20px}
+.tc-section{background:#fff;border:1px solid #e0e0e0;border-radius:6px;margin-bottom:14px;overflow:hidden}
+.tc-section-hdr{background:#f8f9fa;padding:10px 15px;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e0e0e0}
+.sec-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:#1a1a2e;color:#fff;border-radius:50%;font-size:11px;flex-shrink:0}
+.tc-section-body{padding:14px 15px}
+.chip-wrap{display:flex;flex-wrap:wrap;gap:5px;border:1px solid #ddd;border-radius:4px;padding:6px;min-height:38px;align-items:center;cursor:text}
+.chip{background:#1a1a2e;color:#fff;padding:3px 8px;border-radius:12px;font-size:11px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.chip-x{cursor:pointer;font-size:14px;line-height:1;opacity:.7}
+.chip-x:hover{opacity:1}
+.chip-inp{border:none;outline:none;font-size:12px;min-width:80px;flex:1}
+.tc-output-section{display:none}
+.tc-output-section.active{display:block}
+.field-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px}
+.field-tbl th{background:#f5f5f5;padding:5px 7px;text-align:left;border:1px solid #ddd;font-weight:600;font-size:11px}
+.field-tbl td{padding:4px 5px;border:1px solid #ddd;vertical-align:middle}
+.field-tbl input,.field-tbl select{width:100%;padding:4px 6px;font-size:11px;border:1px solid #ccc;border-radius:3px;box-sizing:border-box}
+.check-item{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px}
+.c-ok{color:#27ae60}.c-warn{color:#e67e22}.c-fail{color:#c0392b}.c-idle{color:#aaa}
+.adv-toggle{font-size:11px;color:#888;cursor:pointer;text-decoration:none;display:inline-block;margin-top:6px}
+.adv-toggle:hover{color:#555}
+.field-help{font-size:11px;color:#777;margin-top:3px;line-height:1.4}
+.preview-pre{max-height:260px;overflow-y:auto;font-size:10px;white-space:pre-wrap;background:#f9f9f9;padding:8px;border-radius:3px;border:1px solid #ddd;margin:0;line-height:1.5}
+.err-box{display:none;background:#fdecea;border:1px solid #f44336;padding:10px 14px;border-radius:4px;margin-bottom:12px;font-size:13px;color:#c0392b;line-height:1.6}
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <h1 style="margin:0;font-size:20px">{% if edit_mode %}Modifica Test Case{% else %}Nuovo Test Case{% endif %}</h1>
+    <a href="/test-cases" style="font-size:12px;color:#888">← Torna alla lista</a>
+</div>
+
+{% if edit_mode and tc %}
+<div style="background:#e8f4fd;border:1px solid #2196f3;padding:10px 14px;border-radius:4px;margin-bottom:14px;font-size:12px;color:#1565c0">
+    Stai modificando il test case <strong>#{{ tc.id }} — {{ tc.title | e }}</strong>.
+    {% if tc.user_prompt_template %}
+    Il prompt precedente verrà sostituito con la generazione dinamica al salvataggio.
+    {% endif %}
+</div>
+{% endif %}
+
+<form id="tc-form" method="post" action="{% if edit_mode and tc %}/test-cases/{{ tc.id }}/edit-guided{% else %}/test-cases/create{% endif %}">
+
+<div class="tc-grid">
+
+<!-- ══════════════════════════════ COLONNA FORM ══════════════════════════════ -->
+<div>
+
+<!-- § 1 Tipo + Libreria -->
+<div class="tc-section">
+    <div class="tc-section-hdr"><span class="sec-num">1</span> Tipo test e libreria</div>
+    <div class="tc-section-body">
+        <div class="form-group">
+            <label>Tipo test <span style="color:red">*</span></label>
+            <select name="test_type_id" id="test_type_id" required>
+                <option value="">-- Seleziona --</option>
+                {% for tt in test_types %}
+                <option value="{{ tt.id | e }}">{{ tt.label | e }}</option>
+                {% endfor %}
+            </select>
+            <div class="field-help" id="type-desc">Seleziona un tipo per vedere la descrizione.</div>
+        </div>
+        <div id="tpl-body-box" style="display:none;margin-top:8px;margin-bottom:4px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:11px;font-weight:600;color:#555">Testo fisso del template per questo tipo</span>
+                <a class="adv-toggle" href="#" onclick="toggleEl('tpl-body-pre');return false" style="margin:0">▸ mostra/nascondi</a>
+            </div>
+            <pre id="tpl-body-pre" style="display:none;font-size:10px;background:#f5f5f5;border:1px solid #ddd;border-radius:3px;padding:8px;max-height:140px;overflow-y:auto;white-space:pre-wrap;color:#555;margin:0"></pre>
+            <div style="font-size:10px;color:#aaa;margin-top:3px">Questo testo appare nel prompt ma non è modificabile qui. Usa "Regole aggiuntive" in Sezione 2 per estenderlo.</div>
+        </div>
+
+        <div class="form-group" style="margin:0">
+            <label>Libreria</label>
+            <select name="library_id" id="library_id">
+                <option value="">-- Generale --</option>
+                {% for lib in libraries %}
+                <option value="{{ lib.id | e }}">{{ lib.label | e }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- § 2 Contenuto -->
+<div class="tc-section">
+    <div class="tc-section-hdr"><span class="sec-num">2</span> Contenuto</div>
+    <div class="tc-section-body">
+        <div class="form-group">
+            <label>Titolo <span style="color:red">*</span></label>
+            <input type="text" name="title" id="title" required placeholder="es: Classificazione ticket IT - Reset password">
+        </div>
+        <div class="form-group">
+            <label id="lbl-instructions">Istruzioni</label>
+            <textarea name="description" id="description" rows="2" placeholder="Cosa deve fare il modello. Es: Classifica il ticket helpdesk nella categoria corretta."></textarea>
+            <div class="field-help">Appare nel prompt dopo "Istruzioni:". Descrive il task in linguaggio naturale.</div>
+        </div>
+        <div class="form-group" id="custom-rules-group" style="display:none">
+            <label>Regole aggiuntive <span style="font-size:10px;color:#888;font-weight:400">(opzionale — una per riga, vengono inserite nel prompt prima del testo da analizzare)</span></label>
+            <textarea name="custom_rules" id="custom_rules" rows="3" placeholder="Una regola per riga. Es:&#10;- Concentrati solo su vulnerabilità OWASP Top 10&#10;- Ignora best practice stilistiche"></textarea>
+            <div class="field-help">Se presenti, appaiono nel prompt come sezione "Regole:" prima dell'input.</div>
+        </div>
+        <div class="form-group">
+            <label id="lbl-input">Input testuale</label>
+            <textarea name="input_text" id="input_text" rows="5" placeholder="Il testo che il modello deve elaborare."></textarea>
+            <div class="field-help" id="input-help">Testo grezzo da passare al modello.</div>
+        </div>
+        <div class="form-group" id="ctx-group" style="display:none">
+            <label>Contesto <span style="color:red">*</span></label>
+            <textarea name="context_text" id="context_text" rows="4" placeholder="Documento di riferimento. Il modello deve rispondere SOLO basandosi su questo testo."></textarea>
+            <div class="field-help">Obbligatorio per RAG/Q&A e Contextual Insight.</div>
+        </div>
+        <a class="adv-toggle" href="#" onclick="toggleEl('sys-grp');return false">▸ System prompt (avanzato)</a>
+        <div id="sys-grp" style="display:none;margin-top:8px">
+            <textarea name="system_prompt" id="system_prompt" rows="2" placeholder="Lasciare vuoto per usare il default."></textarea>
+            <div class="field-help">Default: "Sei un modello in fase di benchmark. Tipo test: …"</div>
+        </div>
+    </div>
+</div>
+
+<!-- § 3 Output atteso -->
+<div class="tc-section">
+    <div class="tc-section-hdr">
+        <span class="sec-num">3</span> Output atteso
+        <span style="font-size:10px;color:#888;margin-left:auto;font-weight:400">definisce le metriche di scoring</span>
+    </div>
+    <div class="tc-section-body">
+
+        <div id="out-placeholder" style="color:#aaa;font-size:12px;padding:6px 0">Seleziona un tipo test per vedere i campi.</div>
+
+        <!-- CLASSIFICATION -->
+        <div class="tc-output-section" id="out-classification">
+            <div class="form-group">
+                <label>Classi ammesse <span style="color:red">*</span></label>
+                <div class="chip-wrap" id="cls-chip-wrap" onclick="document.getElementById('cls-inp').focus()">
+                    <input id="cls-inp" class="chip-inp" type="text" placeholder="digita e premi Invio">
+                </div>
+                <div class="field-help">Almeno 2 classi. Premi Invio o virgola per aggiungere.</div>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Label corretta attesa (ground-truth) <span style="color:red">*</span></label>
+                <select id="cls-expected"><option value="">-- aggiungi prima le classi --</option></select>
+                <div id="cls-label-err" style="color:#c0392b;font-size:11px;display:none">La label attesa deve essere nelle classi ammesse.</div>
+            </div>
+        </div>
+
+        <!-- DATA_EXTRACTION -->
+        <div class="tc-output-section" id="out-data_extraction">
+            <div class="form-group">
+                <label>Schema campi <span style="color:red">*</span></label>
+                <table class="field-tbl">
+                    <thead><tr><th>Nome campo</th><th>Tipo</th><th>Valore atteso</th><th>Obbl.</th><th></th></tr></thead>
+                    <tbody id="de-tbody"></tbody>
+                </table>
+                <button type="button" onclick="addDeRow()" class="btn-small">+ Campo</button>
+                <div class="field-help">Il "valore atteso" è il ground-truth che il modello deve estrarre.</div>
+            </div>
+        </div>
+
+        <!-- RAG_QA -->
+        <div class="tc-output-section" id="out-rag_qa">
+            <div class="form-group">
+                <label>Fatti attesi nella risposta</label>
+                <textarea id="rag-facts" rows="3" placeholder="Un fatto per riga:&#10;26 giorni di ferie all'anno&#10;Il manager approva entro 3 giorni"></textarea>
+                <div class="field-help">Frasi chiave che la risposta deve contenere.</div>
+            </div>
+            <div style="display:flex;gap:20px;flex-wrap:wrap">
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rag-absent"> La risposta NON è nel contesto (answer_absent)</label>
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="rag-cite" checked> Deve citare il contesto</label>
+            </div>
+        </div>
+
+        <!-- SUMMARIZATION -->
+        <div class="tc-output-section" id="out-summarization">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div class="form-group" style="margin:0"><label>Max parole</label><input type="number" id="sum-words" min="10" max="2000" placeholder="150"></div>
+                <div class="form-group" style="margin:0"><label>Formato</label>
+                    <select id="sum-fmt"><option value="">Libero</option><option value="bullet_list">Elenco puntato</option></select>
+                </div>
+            </div>
+            <div class="form-group"><label>Punti richiesti (uno per riga)</label><textarea id="sum-req" rows="2" placeholder="Decisione approvata&#10;Owner assegnato"></textarea></div>
+            <div class="form-group" style="margin:0"><label>Punti da evitare (uno per riga)</label><textarea id="sum-forb" rows="2"></textarea></div>
+        </div>
+
+        <!-- CODE_ANALYSIS -->
+        <div class="tc-output-section" id="out-code_analysis">
+            <div class="form-group">
+                <label>Tipo analisi <span style="font-size:10px;color:#888;font-weight:400">(appare nel prompt — personalizzabile per ogni test case)</span></label>
+                <textarea id="ca-instr" rows="2" placeholder="Tipo analisi: sicurezza, correttezza, best practice."></textarea>
+                <div class="field-help">Questo testo specifica le dimensioni di analisi richieste nel prompt.</div>
+            </div>
+            <div class="form-group">
+                <label>Linguaggio di programmazione <span style="color:red">*</span></label>
+                <select id="ca-lang">
+                    <option value="Python">Python</option><option value="SQL">SQL</option>
+                    <option value="JavaScript">JavaScript</option><option value="TypeScript">TypeScript</option>
+                    <option value="Java">Java</option><option value="C#">C#</option>
+                    <option value="Go">Go</option><option value="Bash">Bash</option>
+                    <option value="PHP">PHP</option><option value="Ruby">Ruby</option>
+                    <option value="Rust">Rust</option>
+                </select>
+                <div class="field-help">Appare nel prompt come "Linguaggio: Python".</div>
+            </div>
+            <div class="form-group">
+                <label>Finding attesi (opzionale — array JSON)</label>
+                <textarea id="ca-findings" rows="3" placeholder='[{"type":"security","severity":"high","description_contains":"SQL injection"}]'></textarea>
+                <div class="field-help">type: bug|security|best_practice|performance — severity: low|medium|high|critical</div>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Raccomandazioni attese (una per riga)</label>
+                <textarea id="ca-recs" rows="2" placeholder="Usare query parametrizzate&#10;Validare l'input"></textarea>
+            </div>
+        </div>
+
+        <!-- CODE_DOCUMENTATION -->
+        <div class="tc-output-section" id="out-code_documentation">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div class="form-group" style="margin:0"><label>Stile</label>
+                    <select id="cd-style"><option value="docstring_google">Google Docstring</option><option value="other">Altro</option></select></div>
+                <div class="form-group" style="margin:0"><label>Lingua output</label>
+                    <select id="cd-lang"><option value="it">Italiano</option><option value="en">English</option></select></div>
+            </div>
+            <div class="form-group">
+                <label>Sezioni da includere</label>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px">
+                    <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="cd-inc" value="parametri" checked> Parametri</label>
+                    <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="cd-inc" value="valore restituito" checked> Valore restituito</label>
+                    <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="cd-inc" value="eccezioni" checked> Eccezioni</label>
+                    <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="cd-inc" value="esempio"> Esempio</label>
+                </div>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Parametri attesi (opzionale)</label>
+                <table class="field-tbl"><thead><tr><th>Nome</th><th>Tipo</th><th></th></tr></thead><tbody id="cd-tbody"></tbody></table>
+                <button type="button" onclick="addCdRow()" class="btn-small" style="margin-top:4px">+ Parametro</button>
+            </div>
+        </div>
+
+        <!-- REFACTORING -->
+        <div class="tc-output-section" id="out-refactoring">
+            <div class="form-group"><label>Obiettivo <span style="color:red">*</span></label><input type="text" id="ref-target" placeholder="es: ridurre duplicazione, migliorare performance"></div>
+            <div class="form-group"><label>Vincoli (uno per riga)</label><textarea id="ref-const" rows="2" placeholder="non cambiare signature pubbliche&#10;non introdurre dipendenze esterne"></textarea></div>
+            <div style="display:flex;gap:20px;flex-wrap:wrap">
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="ref-pres" checked> Must preserve behavior</label>
+                <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="ref-tests"> Tests should pass</label>
+            </div>
+        </div>
+
+        <!-- IMAGE_DESCRIPTION -->
+        <div class="tc-output-section" id="out-image_description">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div class="form-group" style="margin:0"><label>Max parole</label><input type="number" id="img-words" min="10" max="500" placeholder="120"></div>
+                <div class="form-group" style="margin:0"><label>Stile</label>
+                    <select id="img-style"><option value="descrizione_neutra">Neutro</option><option value="tecnica">Tecnico</option></select></div>
+            </div>
+            <div class="form-group"><label>Oggetti richiesti (uno per riga)</label><textarea id="img-req" rows="2" placeholder="bicicletta&#10;casco"></textarea></div>
+            <div class="form-group" style="margin:0"><label>Oggetti da non menzionare (uno per riga)</label><textarea id="img-forb" rows="2" placeholder="automobile"></textarea></div>
+        </div>
+
+        <!-- OCR_EXTRACTION -->
+        <div class="tc-output-section" id="out-ocr_extraction">
+            <div class="form-group">
+                <label>Campi attesi</label>
+                <table class="field-tbl"><thead><tr><th>Nome campo</th><th>Valore atteso</th><th></th></tr></thead><tbody id="ocr-tbody"></tbody></table>
+                <button type="button" onclick="addOcrRow()" class="btn-small" style="margin-top:4px">+ Campo</button>
+            </div>
+            <div class="form-group" style="margin:0"><label>Expected text (opzionale)</label><input type="text" id="ocr-etxt" placeholder="Mario Rossi, nato 15/03/1985 a Milano"></div>
+        </div>
+
+        <!-- SPEECH_TO_TEXT -->
+        <div class="tc-output-section" id="out-speech_to_text_postprocess">
+            <div class="form-group">
+                <label>Trasformazione richiesta <span style="font-size:10px;color:#888;font-weight:400">(appare nel prompt — personalizzabile per ogni test case)</span></label>
+                <textarea id="stt-instr" rows="5" placeholder="Trasformazione richiesta:&#10;- Rimuovi riempitivi (emh, ehm, ecc).&#10;- Correggi errori di trascrizione evidenti.&#10;- Estrai action items, owner e task espliciti.&#10;- Estrai date e deadline menzionate."></textarea>
+                <div class="field-help">Questo testo specifica le operazioni di pulizia e strutturazione richieste nel prompt.</div>
+            </div>
+            <div class="form-group">
+                <label>Frasi attese nella trascrizione pulita (una per riga)</label>
+                <textarea id="stt-trans" rows="2" placeholder="deploy venerdi&#10;Marco si occupa del rollback"></textarea>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Action items attesi</label>
+                <table class="field-tbl"><thead><tr><th>Owner (o vuoto)</th><th>Task</th><th>Deadline (o vuoto)</th><th></th></tr></thead><tbody id="stt-tbody"></tbody></table>
+                <button type="button" onclick="addSttRow()" class="btn-small" style="margin-top:4px">+ Action item</button>
+            </div>
+        </div>
+
+        <!-- CONTEXTUAL_INSIGHT -->
+        <div class="tc-output-section" id="out-contextual_insight">
+            <div class="form-group">
+                <label>Istruzioni analisi <span style="font-size:10px;color:#888;font-weight:400">(appare nel prompt — personalizzabile per ogni test case)</span></label>
+                <textarea id="ci-instr" rows="5" placeholder="Produci un'analisi con:&#10;- insights: lista di idee/strategie concrete (minimo 3, massimo 8)&#10;- references_to_context: riferimenti specifici ai turni della conversazione&#10;- follow_up_questions: domande di approfondimento pertinenti&#10;- depth: il dominio di riferimento della tua analisi"></textarea>
+                <div class="field-help">Questo testo viene inserito nel prompt prima del testo da analizzare. Modificalo per adattare la struttura dell'analisi richiesta.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div class="form-group" style="margin:0"><label>Min insights</label><input type="number" id="ci-min" value="3" min="1" max="20"></div>
+                <div class="form-group" style="margin:0"><label>Max insights</label><input type="number" id="ci-max" value="8" min="1" max="20"></div>
+            </div>
+            <div class="form-group"><label>Temi da includere (uno per riga)</label><textarea id="ci-inc" rows="2" placeholder="responsabilita&#10;onere della prova"></textarea></div>
+            <div class="form-group"><label>Temi da evitare (uno per riga)</label><textarea id="ci-avd" rows="2" placeholder="penale"></textarea></div>
+            <div class="form-group" style="margin:0"><label>Dominio analisi (opzionale)</label><input type="text" id="ci-depth" placeholder="es: legale, strategico, commerciale"></div>
+        </div>
+
+        <!-- Formato risposta (comune a tutti i tipi) -->
+        <div id="answer-fmt-group" style="display:none;margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0">
+            <div class="form-group" style="margin:0">
+                <label>Formato risposta <span style="font-size:10px;color:#888;font-weight:400">(appare nel prompt — personalizzabile per ogni test case)</span></label>
+                <textarea id="tc-answer-fmt" rows="3" style="font-family:monospace;font-size:11px" placeholder='{ "label": "classe_scelta" }'></textarea>
+                <div class="field-help">Struttura del campo <code>"answer"</code> nel JSON di risposta. Modifica per adattare l'output atteso dal modello.</div>
+            </div>
+        </div>
+
+        <!-- expected_output_json: dati di validazione -->
+        <div id="expected-json-group" style="display:none;margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0">
+            <div class="form-group" style="margin:0">
+                <label>Dati attesi per validazione <span style="font-size:10px;color:#888;font-weight:400">(non appare nel prompt — usato per verificare la risposta del modello)</span></label>
+                <textarea id="raw-json-display" name="expected_output_json" rows="6" style="font-family:monospace;font-size:11px" oninput="onRawEdit()" placeholder='{"schema": {...}, "expected": {...}}'></textarea>
+                <div id="raw-json-err" style="color:#c0392b;font-size:11px;display:none"></div>
+                <div class="field-help">Generato automaticamente dai campi strutturati. Puoi modificarlo direttamente; le modifiche sovrascrivono i campi sopra.</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- § 4 Meta -->
+<div class="tc-section">
+    <div class="tc-section-hdr"><span class="sec-num">4</span> Metadati</div>
+    <div class="tc-section-body">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Difficoltà</label>
+                <select name="difficulty"><option value="easy">Facile</option><option value="medium" selected>Media</option><option value="hard">Difficile</option></select>
+            </div>
+            <div class="form-group">
+                <label>Rischio</label>
+                <select name="risk_level"><option value="low" selected>Basso</option><option value="medium">Medio</option><option value="high">Alto</option></select>
+            </div>
+            <div class="form-group">
+                <label>Abilitato</label>
+                <select name="enabled"><option value="true" selected>Sì</option><option value="false">No</option></select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Tag</label>
+            <input type="text" name="tags_json" placeholder='["classification","helpdesk"]'>
+            <div class="field-help">Array JSON di etichette per filtri e analisi.</div>
+        </div>
+        <a class="adv-toggle" href="#" onclick="toggleEl('rubric-grp');return false">▸ Rubrica per validatore LLM (avanzato)</a>
+        <div id="rubric-grp" style="display:none;margin-top:8px">
+            <textarea name="rubric_json" rows="2" placeholder='{"field_match_weight":0.6,"schema_compliance_weight":0.4}'></textarea>
+            <div class="field-help">Criteri aggiuntivi passati al modello giudice.</div>
+        </div>
+    </div>
+</div>
+
+<div class="err-box" id="form-errors"></div>
+
+<button type="submit" class="btn" onclick="return validateAndSubmit()">{% if edit_mode %}Aggiorna Test Case{% else %}Salva Test Case{% endif %}</button>
+<a href="/test-cases" class="btn" style="background:#666;margin-left:8px">Annulla</a>
+
+</div>
+
+<!-- ══════════════════════════════ COLONNA PREVIEW ══════════════════════════════ -->
+<div class="tc-preview-col">
+
+    <div class="tc-section">
+        <div class="tc-section-hdr">
+            Anteprima prompt
+            <button type="button" id="prev-btn" onclick="generatePreview()" class="btn-small" style="margin-left:auto">Genera anteprima</button>
+        </div>
+        <div class="tc-section-body">
+            <pre class="preview-pre" id="prev-text">Compila i campi e clicca "Genera anteprima".</pre>
+        </div>
+    </div>
+
+    <div class="tc-section">
+        <div class="tc-section-hdr">Validazione</div>
+        <div class="tc-section-body" id="val-panel">
+            <div class="check-item c-idle"><span>○</span><span>Istruzione JSON presente</span></div>
+            <div class="check-item c-idle"><span>○</span><span>Struttura risposta {"answer":...}</span></div>
+            <div class="check-item c-idle"><span>○</span><span>Nessun placeholder non risolto</span></div>
+            <div class="check-item c-idle"><span>○</span><span>Nessuna contaminazione expected</span></div>
+            <div class="check-item c-idle"><span>○</span><span>Classi ammesse presenti</span></div>
+        </div>
+    </div>
+
+    <div class="tc-section" id="schema-sec" style="display:none">
+        <div class="tc-section-hdr">Struttura risposta attesa</div>
+        <div class="tc-section-body">
+            <pre class="preview-pre" id="schema-pre" style="max-height:180px"></pre>
+        </div>
+    </div>
+
+</div>
+
+</div><!-- /tc-grid -->
+</form>
+
+<script>
+var TYPE_META = {{ type_meta | tojson }};
+var _labels = [];
+var _rawMode = false;
+var _populatingForm = false;
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function v(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
+function ck(id){ var e=document.getElementById(id); return e&&e.checked; }
+function lns(id){ return v(id).split('\n').map(s=>s.trim()).filter(Boolean); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function toggleEl(id){ var e=document.getElementById(id); if(e) e.style.display=e.style.display==='none'?'block':'none'; }
+
+// ── type change ────────────────────────────────────────────────────────────
+document.getElementById('test_type_id').addEventListener('change', function(){
+    var tid = this.value;
+    document.querySelectorAll('.tc-output-section').forEach(s=>s.classList.remove('active'));
+    var sec = document.getElementById('out-'+tid);
+    var ph = document.getElementById('out-placeholder');
+    if(sec){ sec.classList.add('active'); ph.style.display='none'; }
+    else { ph.style.display='block'; }
+    var needsCtx = tid==='rag_qa'||tid==='contextual_insight';
+    document.getElementById('ctx-group').style.display = needsCtx?'block':'none';
+    var meta = TYPE_META[tid];
+    if(meta){
+        document.getElementById('type-desc').textContent = meta.description;
+        var il = document.getElementById('lbl-input');
+        if(il) il.textContent = meta.input_label||'Input testuale';
+        // Template body box
+        var tplBox = document.getElementById('tpl-body-box');
+        var tplPre = document.getElementById('tpl-body-pre');
+        if(tplBox && meta.template_body){
+            tplBox.style.display = 'block';
+            if(tplPre) tplPre.textContent = meta.template_body;
+        } else if(tplBox){
+            tplBox.style.display = 'none';
+        }
+    }
+    // Mostra campo regole aggiuntive e aggiorna con default del nuovo tipo
+    var crg = document.getElementById('custom-rules-group');
+    if(crg) crg.style.display = tid ? 'block' : 'none';
+    var crEl = document.getElementById('custom_rules');
+    if(crEl && meta && meta.default_rules && !_populatingForm){
+        crEl.value = meta.default_rules.join('\n');
+    }
+    // Mostra campi comuni (formato risposta + dati validazione)
+    var afGroup = document.getElementById('answer-fmt-group');
+    if(afGroup) afGroup.style.display = tid ? 'block' : 'none';
+    var ejGroup = document.getElementById('expected-json-group');
+    if(ejGroup) ejGroup.style.display = tid ? 'block' : 'none';
+    if(!_populatingForm){
+        var afEl = document.getElementById('tc-answer-fmt');
+        if(afEl) afEl.value = (meta && meta.answer_format) ? meta.answer_format : '';
+    }
+
+    // Pre-popola campi istruzioni personalizzabili al cambio tipo
+    if(!_populatingForm){
+        var _instrDefaults = {
+            'contextual_insight': "Produci un'analisi con:\n- insights: lista di idee/strategie concrete (minimo 3, massimo 8)\n- references_to_context: riferimenti specifici ai turni della conversazione\n- follow_up_questions: domande di approfondimento pertinenti\n- depth: il dominio di riferimento della tua analisi",
+            'code_analysis': "Tipo analisi: sicurezza, correttezza, best practice.",
+            'speech_to_text_postprocess': "Trasformazione richiesta:\n- Rimuovi riempitivi (emh, ehm, ecc).\n- Correggi errori di trascrizione evidenti.\n- Estrai action items, owner e task espliciti.\n- Estrai date e deadline menzionate."
+        };
+        var _instrFields = {
+            'contextual_insight': 'ci-instr',
+            'code_analysis': 'ca-instr',
+            'speech_to_text_postprocess': 'stt-instr'
+        };
+        // resetta tutti i campi istruzioni, poi imposta quello del tipo corrente
+        Object.values(_instrFields).forEach(function(fid){
+            var el = document.getElementById(fid);
+            if(el) el.value = '';
+        });
+        if(_instrFields[tid]){
+            var el = document.getElementById(_instrFields[tid]);
+            if(el) el.value = _instrDefaults[tid] || '';
+        }
+    }
+    _rawMode = false;
+    syncJson();
+});
+
+// ── chips (classification) ─────────────────────────────────────────────────
+function renderChips(){
+    var wrap = document.getElementById('cls-chip-wrap');
+    var inp = document.getElementById('cls-inp');
+    // remove existing chips
+    wrap.querySelectorAll('.chip').forEach(c=>c.remove());
+    _labels.forEach(function(l,i){
+        var chip = document.createElement('span');
+        chip.className='chip';
+        chip.innerHTML = esc(l)+' <span class="chip-x" onclick="removeLabel('+i+')">×</span>';
+        wrap.insertBefore(chip, inp);
+    });
+    var sel = document.getElementById('cls-expected');
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">-- seleziona --</option>';
+    _labels.forEach(function(l){
+        var o=document.createElement('option');
+        o.value=l; o.textContent=l;
+        if(l===cur) o.selected=true;
+        sel.appendChild(o);
+    });
+    syncJson();
+}
+function addLabel(){
+    var inp=document.getElementById('cls-inp');
+    var v=inp.value.trim().replace(/,$/,'').trim();
+    if(v && _labels.indexOf(v)<0){ _labels.push(v); renderChips(); }
+    inp.value='';
+}
+function removeLabel(i){ _labels.splice(i,1); renderChips(); }
+var clsInp = document.getElementById('cls-inp');
+if(clsInp){
+    clsInp.addEventListener('keydown',function(e){
+        if(e.key==='Enter'||e.key===','){ e.preventDefault(); addLabel(); }
+    });
+}
+var clsSel = document.getElementById('cls-expected');
+if(clsSel) clsSel.addEventListener('change', syncJson);
+
+// ── table builders ─────────────────────────────────────────────────────────
+function addDeRow(n,t,val,req){
+    var tb=document.getElementById('de-tbody');
+    var tr=tb.insertRow();
+    var types=['string','number','integer','date','boolean','array','object'];
+    tr.innerHTML=
+        '<td><input class="de-n" value="'+esc(n||'')+'" placeholder="nome" oninput="syncJson()"></td>'+
+        '<td><select class="de-t" onchange="syncJson()">'+types.map(x=>'<option'+(x===(t||'string')?' selected':'')+'>'+x+'</option>').join('')+'</select></td>'+
+        '<td><input class="de-v" value="'+esc(val||'')+'" placeholder="valore atteso" oninput="syncJson()"></td>'+
+        '<td style="text-align:center"><input type="checkbox" class="de-r" '+(req!==false?'checked':'')+' onchange="syncJson()"></td>'+
+        '<td><button type="button" class="btn-small btn-danger" onclick="this.closest(\'tr\').remove();syncJson()">×</button></td>';
+}
+function addOcrRow(n,val){
+    var tb=document.getElementById('ocr-tbody');
+    var tr=tb.insertRow();
+    tr.innerHTML=
+        '<td><input class="ocr-n" value="'+esc(n||'')+'" placeholder="nome" oninput="syncJson()"></td>'+
+        '<td><input class="ocr-v" value="'+esc(val||'')+'" placeholder="valore atteso" oninput="syncJson()"></td>'+
+        '<td><button type="button" class="btn-small btn-danger" onclick="this.closest(\'tr\').remove();syncJson()">×</button></td>';
+}
+function addSttRow(own,task,dl){
+    var tb=document.getElementById('stt-tbody');
+    var tr=tb.insertRow();
+    tr.innerHTML=
+        '<td><input class="stt-o" value="'+esc(own||'')+'" placeholder="null se ignoto" oninput="syncJson()"></td>'+
+        '<td><input class="stt-t" value="'+esc(task||'')+'" placeholder="task da fare" oninput="syncJson()"></td>'+
+        '<td><input class="stt-d" value="'+esc(dl||'')+'" placeholder="null se nessuna" oninput="syncJson()"></td>'+
+        '<td><button type="button" class="btn-small btn-danger" onclick="this.closest(\'tr\').remove();syncJson()">×</button></td>';
+}
+function addCdRow(n,t){
+    var tb=document.getElementById('cd-tbody');
+    var tr=tb.insertRow();
+    tr.innerHTML=
+        '<td><input class="cd-n" value="'+esc(n||'')+'" placeholder="nome" oninput="syncJson()"></td>'+
+        '<td><input class="cd-t" value="'+esc(t||'')+'" placeholder="tipo" oninput="syncJson()"></td>'+
+        '<td><button type="button" class="btn-small btn-danger" onclick="this.closest(\'tr\').remove();syncJson()">×</button></td>';
+}
+
+// ── buildExpectedJson ──────────────────────────────────────────────────────
+function buildExpectedJson(){
+    var tid = document.getElementById('test_type_id').value;
+    if(!tid) return null;
+    var obj = {};
+    try{
+        switch(tid){
+            case 'classification':{
+                if(_labels.length===0) return null;
+                var el = v('cls-expected');
+                obj={ schema:{label:'string'}, expected: el?{label:el}:{}, required_fields:['label'], allowed_labels:_labels.slice() };
+                break;
+            }
+            case 'data_extraction':{
+                var schema={},expected={},required=[];
+                document.querySelectorAll('#de-tbody tr').forEach(function(tr){
+                    var n=tr.querySelector('.de-n').value.trim();
+                    var t=tr.querySelector('.de-t').value;
+                    var vv=tr.querySelector('.de-v').value.trim();
+                    var r=tr.querySelector('.de-r').checked;
+                    if(!n) return;
+                    schema[n]=t;
+                    if(vv!==''){
+                        if(t==='number'||t==='integer'){ var num=parseFloat(vv); expected[n]=isNaN(num)?vv:num; }
+                        else if(t==='boolean'){ expected[n]=vv.toLowerCase()==='true'; }
+                        else { expected[n]=vv; }
+                    }
+                    if(r) required.push(n);
+                });
+                obj={schema,expected,required_fields:required};
+                break;
+            }
+            case 'rag_qa':{
+                var facts=lns('rag-facts');
+                obj={answer_facts:facts, answer_absent:ck('rag-absent'), must_cite_context:ck('rag-cite')};
+                break;
+            }
+            case 'summarization':{
+                var mw=parseInt(v('sum-words'));
+                var fmt=v('sum-fmt');
+                if(!isNaN(mw)&&mw>0) obj.max_words=mw;
+                if(fmt) obj.format=fmt;
+                var rp=lns('sum-req'); if(rp.length) obj.required_points=rp;
+                var fp=lns('sum-forb'); if(fp.length) obj.forbidden_points=fp;
+                break;
+            }
+            case 'code_analysis':{
+                obj={code_language:v('ca-lang')||'Python'};
+                var caInstr=v('ca-instr').trim(); if(caInstr) obj.ca_instructions=caInstr;
+                var fr=v('ca-findings');
+                if(fr){ try{ obj.expected_findings=JSON.parse(fr); }catch(e){} }
+                var recs=lns('ca-recs'); if(recs.length) obj.expected_recommendations=recs;
+                break;
+            }
+            case 'code_documentation':{
+                var mi=Array.from(document.querySelectorAll('.cd-inc:checked')).map(e=>e.value);
+                obj={style:v('cd-style')||'docstring_google', language:v('cd-lang')||'it', must_include:mi};
+                var params=[];
+                document.querySelectorAll('#cd-tbody tr').forEach(function(tr){
+                    var n=tr.querySelector('.cd-n').value.trim();
+                    var t=tr.querySelector('.cd-t').value.trim();
+                    if(n) params.push({name:n,type:t||'any'});
+                });
+                if(params.length) obj.expected_parameters=params;
+                break;
+            }
+            case 'refactoring':{
+                obj={target:v('ref-target')||'migliorare il codice', constraints:lns('ref-const'), must_preserve_behavior:ck('ref-pres'), tests_should_pass:ck('ref-tests')};
+                break;
+            }
+            case 'image_description':{
+                obj={style:v('img-style')||'descrizione_neutra'};
+                var mwi=parseInt(v('img-words')); if(!isNaN(mwi)&&mwi>0) obj.max_words=mwi;
+                var ro=lns('img-req'); if(ro.length) obj.required_objects=ro;
+                var fo=lns('img-forb'); if(fo.length) obj.forbidden_objects=fo;
+                break;
+            }
+            case 'ocr_extraction':{
+                var flds={};
+                document.querySelectorAll('#ocr-tbody tr').forEach(function(tr){
+                    var n=tr.querySelector('.ocr-n').value.trim();
+                    var vv=tr.querySelector('.ocr-v').value.trim();
+                    if(n) flds[n]=vv;
+                });
+                obj={expected_fields:flds};
+                var et=v('ocr-etxt'); if(et) obj.expected_text=et;
+                break;
+            }
+            case 'speech_to_text_postprocess':{
+                var sttInstr=v('stt-instr').trim(); if(sttInstr) obj.stt_instructions=sttInstr;
+                var tc=lns('stt-trans'); if(tc.length) obj.clean_transcript_contains=tc;
+                var ais=[];
+                document.querySelectorAll('#stt-tbody tr').forEach(function(tr){
+                    var owner=tr.querySelector('.stt-o').value.trim()||null;
+                    var task=tr.querySelector('.stt-t').value.trim();
+                    var dl=tr.querySelector('.stt-d').value.trim()||null;
+                    if(task) ais.push({owner,task,deadline:dl});
+                });
+                if(ais.length) obj.action_items=ais;
+                break;
+            }
+            case 'contextual_insight':{
+                var mn=parseInt(v('ci-min'))||3;
+                var mx=parseInt(v('ci-max'))||8;
+                obj={expected_insight_count:{min:mn,max:mx}};
+                var ciInstr=v('ci-instr').trim(); if(ciInstr) obj.ci_instructions=ciInstr;
+                var inc=lns('ci-inc'); if(inc.length) obj.must_include_themes=inc;
+                var avd=lns('ci-avd'); if(avd.length) obj.must_avoid_themes=avd;
+                var dep=v('ci-depth'); if(dep) obj.depth=dep;
+                break;
+            }
+        }
+        // answer_format è comune a tutti i tipi
+        var afmt = v('tc-answer-fmt').trim();
+        if(afmt) obj.answer_format = afmt;
+    }catch(e){ return null; }
+    return obj;
+}
+
+function syncJson(){
+    if(_rawMode) return;
+    var obj = buildExpectedJson();
+    var display = document.getElementById('raw-json-display');
+    if(obj){
+        var s = JSON.stringify(obj,null,2);
+        if(display) display.value=s;
+    } else {
+        if(display) display.value='';
+    }
+}
+
+function onRawEdit(){
+    _rawMode = true;
+    var display = document.getElementById('raw-json-display');
+    var errEl = document.getElementById('raw-json-err');
+    var raw = display?display.value:'';
+    try{
+        if(raw.trim()) JSON.parse(raw);
+        if(errEl) errEl.style.display='none';
+    }catch(e){
+        if(errEl){ errEl.style.display='block'; errEl.textContent='JSON non valido: '+e.message; }
+    }
+}
+
+// ── AJAX preview ───────────────────────────────────────────────────────────
+async function generatePreview(){
+    var btn = document.getElementById('prev-btn');
+    btn.textContent='⟳ Caricamento...';
+    btn.disabled=true;
+    if(!_rawMode) syncJson();
+    var payload={
+        test_type_id: document.getElementById('test_type_id').value,
+        title: v('title'),
+        description: v('description'),
+        input_text: v('input_text'),
+        context_text: v('context_text'),
+        system_prompt: v('system_prompt'),
+        custom_rules: v('custom_rules'),
+        expected_output_json: document.getElementById('raw-json-display').value
+    };
+    try{
+        var resp = await fetch('/api/preview-prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        var data = await resp.json();
+        renderPreview(data);
+    }catch(e){
+        document.getElementById('prev-text').textContent='Errore connessione: '+e.message;
+    }
+    btn.textContent='Genera anteprima';
+    btn.disabled=false;
+}
+
+function renderPreview(data){
+    document.getElementById('prev-text').textContent = data.prompt||'(prompt vuoto)';
+    var checks = data.checks||{};
+    var warnings = data.warnings||[];
+    var issues = data.issues||[];
+    function chkLine(ok, label){
+        var cls = ok?'c-ok':'c-fail';
+        var icon = ok?'✓':'✗';
+        return '<div class="check-item '+cls+'"><span>'+icon+'</span><span>'+esc(label)+'</span></div>';
+    }
+    var html='';
+    html+=chkLine(checks.has_json_instruction,'Istruzione JSON presente');
+    html+=chkLine(checks.has_response_container,'Struttura risposta {"answer":...}');
+    html+=chkLine(checks.no_unreplaced_placeholders,'Nessun placeholder non risolto');
+    html+=chkLine(checks.no_contamination,'Nessuna contaminazione expected');
+    html+=chkLine(checks.allowed_labels_present,'Classi ammesse (per classification)');
+    warnings.forEach(function(w){
+        html+='<div class="check-item c-warn"><span>⚠</span><span>'+esc(w)+'</span></div>';
+    });
+    if(!data.valid && issues.length){
+        html+='<div style="margin-top:6px;font-size:11px;color:#c0392b">Problemi: '+issues.map(esc).join(', ')+'</div>';
+    }
+    document.getElementById('val-panel').innerHTML=html;
+    var sp=data.expected_schema_preview;
+    var schemaSec=document.getElementById('schema-sec');
+    if(sp && Object.keys(sp).length>0){
+        document.getElementById('schema-pre').textContent=JSON.stringify(sp,null,2);
+        schemaSec.style.display='block';
+    } else {
+        schemaSec.style.display='none';
+    }
+}
+
+// ── client-side validation before submit ──────────────────────────────────
+function validateAndSubmit(){
+    var errors=[];
+    var tid = document.getElementById('test_type_id').value;
+    if(!v('title')) errors.push('Il titolo è obbligatorio.');
+    if(!tid) errors.push('Seleziona un tipo test.');
+    if(!_rawMode) syncJson();
+    var jsonVal = document.getElementById('raw-json-display').value;
+    var parsed = null;
+    if(jsonVal.trim()){
+        try{ parsed=JSON.parse(jsonVal); }
+        catch(e){ errors.push('Il JSON atteso non è valido: '+e.message); }
+    }
+    if(parsed && tid==='classification'){
+        var allowed=(parsed.allowed_labels||[]);
+        var expLabel=((parsed.expected||{}).label||'');
+        if(allowed.length<2) errors.push('Definisci almeno 2 classi ammesse.');
+        if(expLabel&&allowed.length>0&&allowed.indexOf(expLabel)<0)
+            errors.push('La label attesa "'+expLabel+'" non è tra le classi ammesse.');
+        if(!expLabel) errors.push('Seleziona la label attesa (ground-truth).');
+    }
+    if(tid==='rag_qa'&&!v('context_text')) errors.push('Il contesto è obbligatorio per RAG/Q&A.');
+    if(parsed && tid==='data_extraction'){
+        var sch=parsed.schema||{};
+        if(Object.keys(sch).length===0) errors.push('Definisci almeno un campo da estrarre.');
+    }
+    var errDiv=document.getElementById('form-errors');
+    if(errors.length>0){
+        errDiv.innerHTML=errors.map(e=>'• '+esc(e)).join('<br>');
+        errDiv.style.display='block';
+        errDiv.scrollIntoView({behavior:'smooth',block:'center'});
+        return false;
+    }
+    errDiv.style.display='none';
+    return true;
+}
+
+// ── populateForm (edit mode) ───────────────────────────────────────────────
+function setEl(id, val){
+    var el=document.getElementById(id);
+    if(el) el.value=(val!==undefined&&val!==null)?String(val):'';
+}
+function setChk(id, checked){
+    var el=document.getElementById(id);
+    if(el) el.checked=!!checked;
+}
+
+function populateForm(tcData){
+    var tid = tcData.test_type_id;
+    if(!tid) return;
+
+    // — type + library (flag impedisce sovrascrittura regole durante populate)
+    _populatingForm = true;
+    var typeSel = document.getElementById('test_type_id');
+    typeSel.value = tid;
+    typeSel.dispatchEvent(new Event('change'));
+    _populatingForm = false;
+
+    var libSel = document.getElementById('library_id');
+    if(libSel && tcData.library_id) libSel.value = tcData.library_id;
+
+    // — common fields
+    setEl('title', tcData.title);
+    setEl('description', tcData.description);
+    setEl('input_text', tcData.input_text);
+    setEl('context_text', tcData.context_text);
+    setEl('system_prompt', tcData.system_prompt);
+
+    if(tcData.system_prompt) {
+        var sg = document.getElementById('sys-grp');
+        if(sg) sg.style.display='block';
+    }
+    // Regole: usa quelle salvate oppure le default del tipo
+    var rulesVal = tcData.custom_rules || '';
+    if(!rulesVal) {
+        var typeMeta = TYPE_META[tcData.test_type_id];
+        if(typeMeta && typeMeta.default_rules) rulesVal = typeMeta.default_rules.join('\n');
+    }
+    if(rulesVal) {
+        setEl('custom_rules', rulesVal);
+        var crg = document.getElementById('custom-rules-group');
+        if(crg) crg.style.display='block';
+    }
+
+    // — meta
+    var diff = document.querySelector('[name="difficulty"]');
+    if(diff) diff.value = tcData.difficulty || 'medium';
+    var risk = document.querySelector('[name="risk_level"]');
+    if(risk) risk.value = tcData.risk_level || 'low';
+    var enab = document.querySelector('[name="enabled"]');
+    if(enab) enab.value = tcData.enabled ? 'true' : 'false';
+    var tags = document.querySelector('[name="tags_json"]');
+    if(tags) tags.value = tcData.tags_json || '';
+    var rub = document.querySelector('[name="rubric_json"]');
+    if(rub && tcData.rubric_json) {
+        rub.value = tcData.rubric_json;
+        var rg = document.getElementById('rubric-grp');
+        if(rg) rg.style.display='block';
+    }
+
+    // — expected output per tipo
+    var expected = {};
+    try{ if(tcData.expected_output_json) expected = JSON.parse(tcData.expected_output_json); }catch(e){}
+
+    switch(tid){
+        case 'classification':
+            _labels = (expected.allowed_labels || []).slice();
+            renderChips();
+            setTimeout(function(){
+                var sel = document.getElementById('cls-expected');
+                if(sel) sel.value = ((expected.expected||{}).label)||'';
+            }, 60);
+            break;
+
+        case 'data_extraction':{
+            var schema = expected.schema||{};
+            var exp = expected.expected||{};
+            var req = expected.required_fields||[];
+            Object.keys(schema).forEach(function(k){
+                var vv = exp[k]!==undefined ? String(exp[k]) : '';
+                addDeRow(k, schema[k], vv, req.indexOf(k)>=0);
+            });
+            break;
+        }
+
+        case 'rag_qa':
+            setEl('rag-facts', (expected.answer_facts||[]).join('\n'));
+            setChk('rag-absent', !!expected.answer_absent);
+            setChk('rag-cite', expected.must_cite_context!==false);
+            break;
+
+        case 'summarization':
+            setEl('sum-words', expected.max_words||'');
+            setEl('sum-fmt', expected.format||'');
+            setEl('sum-req', (expected.required_points||[]).join('\n'));
+            setEl('sum-forb', (expected.forbidden_points||[]).join('\n'));
+            break;
+
+        case 'code_analysis':
+            setEl('ca-instr', expected.ca_instructions||'');
+            setEl('ca-lang', expected.code_language||'Python');
+            if(expected.expected_findings)
+                setEl('ca-findings', JSON.stringify(expected.expected_findings, null, 2));
+            setEl('ca-recs', (expected.expected_recommendations||[]).join('\n'));
+            break;
+
+        case 'code_documentation':
+            setEl('cd-style', expected.style||'docstring_google');
+            setEl('cd-lang', expected.language||'it');
+            var inc = expected.must_include||[];
+            document.querySelectorAll('.cd-inc').forEach(function(cb){
+                cb.checked = inc.indexOf(cb.value)>=0;
+            });
+            (expected.expected_parameters||[]).forEach(function(p){
+                addCdRow(p.name||'', p.type||'');
+            });
+            break;
+
+        case 'refactoring':
+            setEl('ref-target', expected.target||'');
+            setEl('ref-const', (expected.constraints||[]).join('\n'));
+            setChk('ref-pres', expected.must_preserve_behavior!==false);
+            setChk('ref-tests', !!expected.tests_should_pass);
+            break;
+
+        case 'image_description':
+            setEl('img-words', expected.max_words||'');
+            setEl('img-style', expected.style||'descrizione_neutra');
+            setEl('img-req', (expected.required_objects||[]).join('\n'));
+            setEl('img-forb', (expected.forbidden_objects||[]).join('\n'));
+            break;
+
+        case 'ocr_extraction':{
+            var flds = expected.expected_fields||{};
+            Object.keys(flds).forEach(function(k){ addOcrRow(k, String(flds[k])); });
+            setEl('ocr-etxt', expected.expected_text||'');
+            break;
+        }
+
+        case 'speech_to_text_postprocess':
+            setEl('stt-instr', expected.stt_instructions||'');
+            setEl('stt-trans', (expected.clean_transcript_contains||[]).join('\n'));
+            (expected.action_items||[]).forEach(function(ai){
+                addSttRow(ai.owner||'', ai.task||'', ai.deadline||'');
+            });
+            break;
+
+        case 'contextual_insight':{
+            var eic = expected.expected_insight_count||{min:3,max:8};
+            setEl('ci-min', eic.min||3);
+            setEl('ci-max', eic.max||8);
+            setEl('ci-instr', expected.ci_instructions||'');
+            setEl('ci-inc', (expected.must_include_themes||[]).join('\n'));
+            setEl('ci-avd', (expected.must_avoid_themes||[]).join('\n'));
+            setEl('ci-depth', expected.depth||'');
+            break;
+        }
+    }
+
+    // ripristina answer_format (comune a tutti i tipi)
+    setEl('tc-answer-fmt', expected.answer_format||'');
+
+    // aggiorna il JSON nascosto e il display raw
+    syncJson();
+
+    // popola il campo expected_output_json visibile
+    var disp = document.getElementById('raw-json-display');
+    if(disp && tcData.expected_output_json) disp.value = tcData.expected_output_json;
+}
+
+// ── wire up auto-sync listeners ────────────────────────────────────────────
+['rag-absent','rag-cite','ref-pres','ref-tests'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.addEventListener('change',syncJson);
+});
+['sum-words','sum-fmt','ca-lang','cd-style','cd-lang','img-words','img-style','ci-min','ci-max'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.addEventListener('input',syncJson);
+});
+['rag-facts','sum-req','sum-forb','ca-instr','ca-findings','ca-recs','img-req','img-forb','ocr-etxt','stt-instr','stt-trans','ci-instr','ci-inc','ci-avd','ci-depth','ref-target','ref-const','tc-answer-fmt'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.addEventListener('input',syncJson);
+});
+document.querySelectorAll('.cd-inc').forEach(function(el){ el.addEventListener('change',syncJson); });
+
+// ── edit mode init ─────────────────────────────────────────────────────────
+{% if edit_mode and tc_json %}
+(function(){
+    var TC_DATA = {{ tc_json | safe }};
+    populateForm(TC_DATA);
+})();
+{% endif %}
+</script>
+
+{% endblock %}

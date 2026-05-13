@@ -91,6 +91,8 @@ class TestType(Base):
     label = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     expected_schema = Column(String, nullable=True)
+    expected_json_template = Column(Text, nullable=True)
+    answer_format_template = Column(Text, nullable=True)
     enabled = Column(Boolean, default=True)
 
 
@@ -107,6 +109,7 @@ class TestCase(Base):
     context_text = Column(Text, nullable=True)
     system_prompt = Column(Text, nullable=True)
     user_prompt_template = Column(Text, nullable=True)
+    rules = Column(Text, nullable=True)
     expected_output_json = Column(Text, nullable=True)
     expected_text = Column(Text, nullable=True)
     expected_labels_json = Column(Text, nullable=True)

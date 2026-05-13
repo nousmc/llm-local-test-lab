@@ -307,6 +307,7 @@ SEED_TEST_CASES = [
         "description": "Trova i bug in questa funzione Python",
         "input_text": "def calcola_media(numeri, dividi_per):\n    somma = 0\n    for n in numeri:\n        somma += n\n    media = somma / dividi_per\n    return media\n\n# Esempio d'uso:\nvalori = [10, 20, 30, 40]\ntry:\n    risultato = calcola_media(valori, 0)\n    print(f\\\"Media: {risultato}\\\")\nexcept:\n    print(\\\"Errore nel calcolo\\\")",
         "expected_output_json": json.dumps({
+            "code_language": "Python",
             "expected_findings": [
                 {
                     "type": "runtime_error",
@@ -339,6 +340,7 @@ SEED_TEST_CASES = [
         "description": "Identifica la vulnerabilita di sicurezza nel codice",
         "input_text": "def get_user(username):\n    import sqlite3\n    conn = sqlite3.connect('users.db')\n    cursor = conn.cursor()\n    query = f\\\"SELECT * FROM users WHERE username = '{username}'\\\"\n    cursor.execute(query)\n    return cursor.fetchone()\n\n@app.route('/user/<username>')\ndef user_profile(username):\n    user = get_user(username)\n    if user:\n        return jsonify({\\\"name\\\": user[1], \\\"email\\\": user[2]})\n    return jsonify({\\\"error\\\": \\\"not found\\\"}), 404",
         "expected_output_json": json.dumps({
+            "code_language": "SQL",
             "expected_findings": [
                 {
                     "type": "security",
@@ -642,6 +644,7 @@ def seed_test_cases(db):
             context_text=tc_data.get("context_text"),
             system_prompt=tc_data.get("system_prompt"),
             user_prompt_template=tc_data.get("user_prompt_template"),
+            rules=tc_data.get("rules"),
             expected_output_json=tc_data.get("expected_output_json"),
             expected_text=tc_data.get("expected_text"),
             expected_labels_json=tc_data.get("expected_labels_json"),
@@ -657,4 +660,98 @@ def seed_test_cases(db):
     if added > 0:
         db.commit()
 
+    return added
+
+
+def seed_test_cases_from_yaml(db, yaml_path: str = "config/testcase_initializer.yaml") -> int:
+    import yaml
+    from pathlib import Path
+    from ..models import TestCase
+
+    path = Path(yaml_path)
+    if not path.exists():
+        return -1
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Failed to load {yaml_path}: {e}")
+        return -1
+
+    if not isinstance(data, list) or len(data) == 0:
+        return -1
+
+    existing_titles = set()
+    for (title, tid) in db.query(TestCase.title, TestCase.test_type_id).all():
+        existing_titles.add((title, tid))
+
+    added = 0
+    for tc_data in data:
+        key = (tc_data.get("title"), tc_data.get("test_type_id"))
+        if key in existing_titles:
+            continue
+
+        tc = TestCase(
+            test_type_id=tc_data["test_type_id"],
+            title=tc_data["title"],
+            description=tc_data.get("description"),
+            input_text=tc_data.get("input_text"),
+            context_text=tc_data.get("context_text"),
+            system_prompt=tc_data.get("system_prompt"),
+            user_prompt_template=tc_data.get("user_prompt_template"),
+            rules=tc_data.get("rules"),
+            expected_output_json=tc_data.get("expected_output_json"),
+            expected_text=tc_data.get("expected_text"),
+            expected_labels_json=tc_data.get("expected_labels_json"),
+            rubric_json=tc_data.get("rubric_json"),
+            tags_json=tc_data.get("tags_json"),
+            difficulty=tc_data.get("difficulty", "medium"),
+            risk_level=tc_data.get("risk_level", "low"),
+            enabled=tc_data.get("enabled", True),
+        )
+        if tc_data.get("library_id"):
+            tc.library_id = tc_data["library_id"]
+        db.add(tc)
+        added += 1
+
+    if added > 0:
+        db.commit()
+
+    return added
+
+
+def seed_test_types_from_yaml(db, yaml_path: str = "config/testtype_initializer.yaml") -> int:
+    import yaml
+    from pathlib import Path
+    from ..models import TestType
+
+    path = Path(yaml_path)
+    if not path.exists():
+        return -1
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Failed to load {yaml_path}: {e}")
+        return -1
+    if not isinstance(data, list) or len(data) == 0:
+        return -1
+
+    existing_ids = {row[0] for row in db.query(TestType.id).all()}
+    added = 0
+    for tt_data in data:
+        if tt_data.get("id") in existing_ids:
+            continue
+        tt = TestType(
+            id=tt_data["id"],
+            label=tt_data.get("label", tt_data["id"]),
+            description=tt_data.get("description"),
+            expected_schema=tt_data.get("expected_schema"),
+            expected_json_template=tt_data.get("expected_json_template"),
+            enabled=tt_data.get("enabled", True),
+        )
+        db.add(tt)
+        added += 1
+
+    if added > 0:
+        db.commit()
     return added

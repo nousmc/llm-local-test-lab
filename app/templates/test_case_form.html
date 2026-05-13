@@ -4,10 +4,6 @@
 <h1>Test Case</h1>
 
 {% if mode == 'list' %}
-<div style="margin-bottom:15px">
-    <a href="/test-cases/new" class="btn">Nuovo Test Case</a>
-</div>
-
 {% for lib_id, lib_data in lib_groups.items() %}
 <div class="lib-panel">
     <div class="lib-panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
@@ -22,6 +18,7 @@
                     <th>ID</th>
                     <th>Titolo</th>
                     <th>Tipo</th>
+                    <th>Libreria</th>
                     <th style="max-width:200px">Descrizione</th>
                     <th>Difficolta</th>
                     <th>Rischio</th>
@@ -35,13 +32,14 @@
                     <td>{{ tc.id }}</td>
                     <td>{{ tc.title | e }}</td>
                     <td>{{ tc.test_type_id | e }}</td>
+                    <td>{{ tc.library_id or 'general' | e }}</td>
                     <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ tc.description | e }}">{{ (tc.description or '')[:50] | e }}</td>
                     <td>{{ tc.difficulty | e }}</td>
                     <td>{{ tc.risk_level | e }}</td>
                     <td>{{ 'Si' if tc.enabled else 'No' }}</td>
                     <td class="actions">
                         <a href="/test-cases/{{ tc.id }}" class="btn-small">Vedi</a>
-                        <a href="/test-cases/{{ tc.id }}/edit" class="btn-small">Modifica</a>
+                        <a href="/test-cases/{{ tc.id }}/edit-guided" class="btn-small">Modifica</a>
                         <form method="post" action="/test-cases/{{ tc.id }}/delete" style="display:inline" onsubmit="return confirm('Eliminare?')">
                             <button type="submit" class="btn-small btn-danger">Elimina</button>
                         </form>
@@ -58,10 +56,22 @@
 
 {% elif mode == 'create' %}
 
+<div id="example-panel" class="lib-panel" style="margin-bottom:12px">
+    <div class="lib-panel-header" onclick="this.parentElement.classList.toggle('collapsed')" style="background:#e3f2fd">
+        <span class="lib-toggle">&#9660;</span>
+        <strong>Esempio compilato — guida alla creazione</strong>
+        <span style="font-size:11px;color:#555;margin-left:8px">(seleziona un tipo test per vedere l'esempio corrispondente)</span>
+    </div>
+    <div class="lib-panel-body" id="example-body" style="display:block;font-size:12px;padding:8px 12px">
+        Seleziona un tipo test per vedere un esempio completo di compilazione.
+    </div>
+</div>
+
 <form method="post" action="/test-cases" enctype="multipart/form-data" class="form">
     <div class="form-group">
         <label>Titolo *</label>
         <input type="text" name="title" required>
+        <div class="field-help">Nome del test case. Identifica il test nelle liste, nei report e nei grafici.</div>
     </div>
     <div class="form-group">
         <label>Tipo test *</label>
@@ -71,46 +81,158 @@
             <option value="{{ tt.id | e }}">{{ tt.label | e }}</option>
             {% endfor %}
         </select>
+        <div class="field-help">Determina la formula di scoring, le metriche deterministiche e la validazione LLM applicate. Ogni tipo ha regole di scoring diverse (vedi tabella in AGENTS.md).</div>
     </div>
     <div class="form-group">
-        <label>Descrizione</label>
-        <textarea name="description" rows="3"></textarea>
+        <label>Libreria</label>
+        <select name="library_id">
+            <option value="">-- Generale --</option>
+            {% for lib in libraries %}
+            <option value="{{ lib.id | e }}">{{ lib.label | e }}</option>
+            {% endfor %}
+        </select>
+        <div class="field-help">Raggruppa il test per dominio applicativo. Lasciare vuoto per "Generale". La libreria e' un contenitore tematico: tutti i test di una libreria condividono lo stesso ambito (es. "Documenti Legali", "Ambito Medico").</div>
     </div>
+    <div class="form-group">
+        <label>Descrizione / Istruzioni</label>
+        <textarea name="description" rows="3"></textarea>
+        <div class="field-help"><b>Istruzioni su cosa deve fare il modello.</b> Questo testo viene inserito nel prompt dopo "Istruzioni:". Esempio: "Classifica il ticket nella categoria corretta" o "Rispondi alla domanda basandoti ESCLUSIVAMENTE sul contesto fornito". Appare nella sezione <code>Istruzioni: {description}</code> del prompt assemblato.</div>
+    </div>
+    <div class="form-group">
+        <label>Regole</label>
+        <textarea name="rules" rows="3"></textarea>
+        <div class="field-help"><b>Regole di comportamento del modello.</b> Inserito nel prompt dopo "Regole:". <b>Lasciare vuoto</b> per i test case esistenti migrati: il prompt assemblato usera' il template del tipo test senza regole custom. Per popolarlo: scrivi qui i vincoli operativi. Esempio: "Non usare categorie diverse da quelle elencate. Restituisci solo la label scelta. Non aggiungere spiegazioni." oppure "Cita parti del contesto per giustificare la risposta. Non usare conoscenze esterne al contesto."</div>
+    </div>
+
+    <div class="form-group" style="background:#f5f5f5;padding:8px 12px;border-radius:4px;margin-bottom:12px">
+        <label style="cursor:pointer;font-weight:bold" onclick="var b=document.getElementById('structured-fields');b.style.display=b.style.display==='none'?'block':'none'">&#9660; Compilazione assistita per tipo test</label>
+        <div id="structured-fields" style="display:block;margin-top:8px">
+            <div class="field-help" style="margin-bottom:8px">Compila i campi sotto per generare automaticamente le regole e il JSON atteso. Per classification: le label vanno nelle Regole come JSON. Per gli altri tipi: aggiorna il Risultato atteso (JSON).</div>
+            <div id="sf-classification" class="sf-group">
+                <label style="font-size:12px">Allowed Labels (una per riga)</label>
+                <textarea id="sf-allowed_labels" rows="3" style="font-size:11px;width:100%" placeholder="helpdesk_password_reset&#10;network_issue&#10;billing"></textarea>
+            </div>
+            <div id="sf-data_extraction" class="sf-group" style="display:none">
+                <label style="font-size:12px">Schema campi (nome: tipo, uno per riga)</label>
+                <textarea id="sf-schema" rows="3" style="font-size:11px;width:100%" placeholder="invoice_number: string&#10;date: date&#10;total: number"></textarea>
+                <label style="font-size:12px;margin-top:6px">Campi obbligatori (checkbox)</label>
+                <div id="sf-required_fields"></div>
+            </div>
+            <div id="sf-ocr_extraction" class="sf-group" style="display:none">
+                <label style="font-size:12px">Expected fields (nome: valore, uno per riga)</label>
+                <textarea id="sf-expected_fields" rows="3" style="font-size:11px;width:100%" placeholder="nome: Mario Rossi&#10;data: 15/03/1985&#10;luogo: Milano"></textarea>
+                <label style="font-size:12px;margin-top:6px">Expected text</label>
+                <input type="text" id="sf-expected_text" style="font-size:11px;width:100%" placeholder="Mario Rossi, nato 15/03/1985 a Milano">
+            </div>
+            <div id="sf-rag_qa" class="sf-group" style="display:none">
+                <label style="font-size:12px">Answer facts (uno per riga)</label>
+                <textarea id="sf-answer_facts" rows="3" style="font-size:11px;width:100%" placeholder="Aprire bridge entro 15 minuti&#10;Notificare incident manager"></textarea>
+                <div style="margin-top:6px"><label style="font-size:12px"><input type="checkbox" id="sf-must_cite_context"> Must cite context</label></div>
+                <div><label style="font-size:12px"><input type="checkbox" id="sf-answer_absent"> Answer absent</label></div>
+            </div>
+            <div id="sf-summarization" class="sf-group" style="display:none">
+                <label style="font-size:12px">Required points (uno per riga)</label>
+                <textarea id="sf-required_points" rows="3" style="font-size:11px;width:100%" placeholder="Decisione approvata&#10;Owner assegnato"></textarea>
+                <label style="font-size:12px;margin-top:6px">Max words</label>
+                <input type="number" id="sf-max_words" style="font-size:11px;width:80px" placeholder="150">
+            </div>
+            <div id="sf-code_analysis" class="sf-group" style="display:none">
+                <label style="font-size:12px">Expected findings (JSON array)</label>
+                <textarea id="sf-expected_findings" rows="3" style="font-size:11px;width:100%" placeholder='[{"type":"security","severity":"high","description":"SQL injection"}]'></textarea>
+                <label style="font-size:12px;margin-top:6px">Language</label>
+                <select id="sf-language"><option value="it">Italiano</option><option value="en">English</option></select>
+            </div>
+            <div id="sf-code_documentation" class="sf-group" style="display:none">
+                <label style="font-size:12px">Must include (checkbox)</label>
+                <div id="sf-must_include"></div>
+                <label style="font-size:12px;margin-top:6px">Style</label>
+                <select id="sf-style"><option value="docstring_google">Google</option><option value="other">Altro</option></select>
+            </div>
+            <div id="sf-refactoring" class="sf-group" style="display:none">
+                <label style="font-size:12px">Target</label>
+                <input type="text" id="sf-target" style="font-size:11px;width:100%" placeholder="ridurre duplicazione">
+                <label style="font-size:12px;margin-top:6px">Constraints (uno per riga)</label>
+                <textarea id="sf-constraints" rows="2" style="font-size:11px;width:100%" placeholder="non cambiare firma&#10;non introdurre dipendenze"></textarea>
+                <div style="margin-top:6px"><label style="font-size:12px"><input type="checkbox" id="sf-must_preserve_behavior" checked> Must preserve behavior</label></div>
+            </div>
+            <div id="sf-image_description" class="sf-group" style="display:none">
+                <label style="font-size:12px">Required objects (uno per riga)</label>
+                <textarea id="sf-required_objects" rows="2" style="font-size:11px;width:100%" placeholder="bicicletta&#10;casco"></textarea>
+                <label style="font-size:12px;margin-top:6px">Forbidden objects (uno per riga)</label>
+                <textarea id="sf-forbidden_objects" rows="2" style="font-size:11px;width:100%" placeholder="automobile"></textarea>
+                <label style="font-size:12px;margin-top:6px">Max words</label>
+                <input type="number" id="sf-img_max_words" style="font-size:11px;width:80px" placeholder="120">
+            </div>
+            <div id="sf-speech_to_text_postprocess" class="sf-group" style="display:none">
+                <label style="font-size:12px">Clean transcript contains (uno per riga)</label>
+                <textarea id="sf-clean_transcript_contains" rows="2" style="font-size:11px;width:100%" placeholder="deploy venerdi&#10;Marco si occupa del rollback"></textarea>
+                <label style="font-size:12px;margin-top:6px">Action items (JSON array)</label>
+                <textarea id="sf-action_items" rows="2" style="font-size:11px;width:100%" placeholder='[{"owner":"Marco","task":"rollback","deadline":null}]'></textarea>
+            </div>
+            <div id="sf-contextual_insight" class="sf-group" style="display:none">
+                <label style="font-size:12px">Insight count min / max</label>
+                <input type="number" id="sf-insight_min" style="font-size:11px;width:60px" placeholder="3">
+                <input type="number" id="sf-insight_max" style="font-size:11px;width:60px" placeholder="8">
+                <label style="font-size:12px;margin-top:6px">Must include themes (uno per riga)</label>
+                <textarea id="sf-must_include_themes" rows="2" style="font-size:11px;width:100%" placeholder="responsabilita&#10;onere della prova"></textarea>
+                <label style="font-size:12px;margin-top:6px">Must avoid themes (uno per riga)</label>
+                <textarea id="sf-must_avoid_themes" rows="2" style="font-size:11px;width:100%" placeholder="penale&#10;dolo"></textarea>
+            </div>
+        </div>
+    </div>
+
     <div class="form-group">
         <label>Input testuale</label>
         <textarea name="input_text" rows="6"></textarea>
+        <div class="field-help">Il testo da elaborare, inviato al modello. Per test RAG: inserire qui la domanda e usare il campo Contesto per il documento di riferimento. Per classificazione: il ticket o testo da classificare. Per estrazione dati: il testo da cui estrarre i campi. Appare nel prompt dopo "Input testuale:".</div>
     </div>
     <div class="form-group">
         <label>Contesto</label>
         <textarea name="context_text" rows="4"></textarea>
+        <div class="field-help">Documento o contesto di riferimento per test RAG / Q&A documentale. <b>Lasciare vuoto</b> se il test non e' di tipo RAG. Se popolato, il modello deve rispondere basandosi solo su questo testo. Appare nel prompt dopo "CONTESTO:".</div>
     </div>
     <div class="form-group">
         <label>System prompt (opzionale)</label>
         <textarea name="system_prompt" rows="3"></textarea>
+        <div class="field-help">Istruzioni di sistema preposte al prompt utente come messaggio separato (ruolo "system"). <b>Lasciare vuoto</b> per usare il default: "Sei un modello in fase di benchmark. Tipo test: NomeTipo". Popolare solo per dare al modello un ruolo o una personalita' specifica (es. "Sei un avvocato civilista. Analizza il seguente contratto.").</div>
     </div>
     <div class="form-group">
-        <label>Prompt inviato al modello / template del test case</label>
-         <textarea name="user_prompt_template" rows="3">{{ default_template or '' | e }}</textarea>
+        <label>Risultato atteso (JSON) — CAMPO FONDAMENTALE</label>
+        <textarea name="expected_output_json" rows="8"></textarea>
+        <div class="field-help" style="font-size:11px;color:#555;margin-top:3px;line-height:1.5">
+            <b>Questo e' il campo piu' importante del test case.</b> Definisce COSA il modello deve produrre e COME viene valutato.<br>
+            <b>Deve essere un JSON valido.</b> I campi principali, che variano per tipo test:<br><br>
+            <b>Per TUTTI i tipi:</b><br>
+            <code>schema</code> — la struttura JSON attesa (es. <code>{"label":"string"}</code>, <code>{"invoice_number":"string","total":"number"}</code>). <b>Obbligatorio.</b> Usato per validare che l'output abbia i tipi corretti.<br>
+            <code>expected</code> — i <b>valori ground-truth</b> attesi (es. <code>{"label":"network_issue"}</code>, <code>{"total":1280.40}</code>). Confrontati campo per campo con l'output del modello.<br>
+            <code>required_fields</code> — lista dei campi obbligatori. Se mancano → penalita'.<br>
+            <code>allowed_labels</code> — classi ammesse per classificazione (es. <code>["helpdesk","network_issue","billing"]</code>).<br><br>
+            <b>Specifici per tipo:</b> RAG: <code>answer_facts</code>, <code>must_cite_context</code>, <code>answer_absent</code>. Sintesi: <code>required_points</code>, <code>max_words</code>. Code analysis: <code>expected_findings</code> (con type/severity/description). Refactoring: <code>constraints</code>, <code>target</code>. Code doc: <code>must_include</code>, <code>expected_parameters</code>. Image desc: <code>required_objects</code>, <code>max_words</code>. Speech-to-text: <code>action_items</code>, <code>clean_transcript_contains</code>. Contextual insight: <code>must_include_themes</code>, <code>must_avoid_themes</code>.<br><br>
+            <b>Esempio classification:</b> <code>{"schema":{"label":"string"},"expected":{"label":"network_issue"},"required_fields":["label"],"allowed_labels":["helpdesk_password_reset","network_issue","billing","other"]}</code><br>
+            <b>Esempio data_extraction:</b> <code>{"schema":{"invoice_number":"string","date":"date","total":"number"},"expected":{"invoice_number":"42","date":"2026-04-15","total":1280.40},"required_fields":["invoice_number","date","total"]}</code><br>
+            <b>Esempio RAG:</b> <code>{"answer_facts":["26 giorni di ferie","Richiedere sul portale HR"],"must_cite_context":true,"answer_absent":false}</code>
+        </div>
     </div>
-    <div class="form-group">
-        <label>Risultato atteso (JSON)</label>
-        <textarea name="expected_output_json" rows="6"></textarea>
-    </div>
+
     <div class="form-group">
         <label>Expected text</label>
-        <textarea name="expected_text" rows="4"></textarea>
+        <textarea name="expected_text" rows="3"></textarea>
+        <div class="field-help">Testo libero atteso (non JSON). <b>Usato solo per tipi NON strutturati</b> (RAG, sintesi, code analysis, refactoring, image desc, contextual insight). Per tipi strutturati (classification, data_extraction, OCR) viene ignorato. Serve come fallback per il validator LLM se expected_output_json e' vuoto, e per metriche lessicali (exact_match, Jaccard). <b>Popolare expected_output_json e' preferibile e piu' preciso.</b></div>
     </div>
     <div class="form-group">
         <label>Expected labels (JSON)</label>
-        <textarea name="expected_labels_json" rows="3"></textarea>
+        <textarea name="expected_labels_json" rows="2"></textarea>
+        <div class="field-help">Vecchio formato etichette (es. <code>{"correct_label":"billing"}</code>). <b>Preferire expected_output_json</b> che contiene anche schema e required_fields. Questo campo e' mantenuto per retrocompatibilita' con test legacy.</div>
     </div>
     <div class="form-group">
         <label>Rubrica (JSON)</label>
-        <textarea name="rubric_json" rows="4"></textarea>
+        <textarea name="rubric_json" rows="3"></textarea>
+        <div class="field-help"><b>Guida per il validator LLM, NON per lo scoring deterministico.</b> Criteri di valutazione aggiuntivi passati al modello giudice. Esempio: <code>{"field_match_weight":0.6,"schema_compliance_weight":0.4}</code>. Il validator usa questa rubrica per assegnare <code>semantic_score</code> e <code>format_score</code>. <b>Non influisce sulle metriche deterministiche</b> (Jaccard, field_accuracy, exact_match) che usano solo expected_output_json.</div>
     </div>
     <div class="form-group">
         <label>Tag (JSON array)</label>
         <input type="text" name="tags_json" placeholder='["tag1","tag2"]'>
+        <div class="field-help">Etichette di categorizzazione. Esempio: <code>["classification","helpdesk","IT"]</code>. Usate per filtro e analisi.</div>
     </div>
     <div class="form-row">
         <div class="form-group">
@@ -120,6 +242,7 @@
                 <option value="medium" selected>Medium</option>
                 <option value="hard">Hard</option>
             </select>
+            <div class="field-help">Livello di difficolta' del test. Usato per analisi comparative e filtri.</div>
         </div>
         <div class="form-group">
             <label>Livello rischio</label>
@@ -128,6 +251,7 @@
                 <option value="medium">Medio</option>
                 <option value="high">Alto</option>
             </select>
+            <div class="field-help">Impatto di un errore in produzione.</div>
         </div>
         <div class="form-group">
             <label>Abilitato</label>
@@ -135,22 +259,285 @@
                 <option value="true" selected>Si</option>
                 <option value="false">No</option>
             </select>
+            <div class="field-help">Se <b>Si</b>, eseguito nelle run. Se <b>No</b>, ignorato.</div>
         </div>
     </div>
     <div class="form-group">
-        <label>File (opzionale, max 50MB)</label>
+        <label>File (opzionale)</label>
         <input type="file" name="file">
-        <small>.txt, .md, .json, .csv, .pdf, .png, .jpg, .jpeg</small>
+        <div class="field-help">.txt, .md, .json, .csv, .pdf, .png, .jpg, .jpeg — input alternativo al testo.</div>
     </div>
     <button type="submit" class="btn">Salva Test Case</button>
 </form>
 
+<div id="prompt-preview" style="margin-top:15px;background:#f0f4f0;padding:10px;border-radius:4px;border:1px solid #c8e6c9">
+    <strong style="font-size:13px">Anteprima prompt inviato al modello</strong>
+    <pre id="prompt-preview-text" style="max-height:300px;overflow:auto;font-size:11px;margin:5px 0 0 0;white-space:pre-wrap;background:#fff;padding:8px;border-radius:3px">Compila i campi per vedere il prompt...</pre>
+</div>
+
+<script>
+var _typeFormats = {{ type_formats | tojson }};
+var _templateParts = {{ template_parts | tojson }};
+var _defaultExpected = {{ default_expected | tojson }};
+var _typeExamples = {{ type_examples | tojson }};
+
+function sfLines(id) { var e=document.getElementById(id); return e ? e.value.split('\n').map(function(s){return s.trim()}).filter(Boolean) : []; }
+function sfShowGroup(tid) {
+    document.querySelectorAll('.sf-group').forEach(function(g){ g.style.display='none'; });
+    var g = document.getElementById('sf-'+tid);
+    if (g) { g.style.display='block'; sfPopulateCheckboxes(tid); }
+}
+function sfPopulateCheckboxes(tid) {
+    if (tid==='data_extraction'||tid==='code_documentation') {
+        var schema = sfLines('sf-schema');
+        var container = document.getElementById(tid==='code_documentation'?'sf-must_include':'sf-required_fields');
+        if (!container) return;
+        var items = tid==='code_documentation' ? ['parametri','valore restituito','eccezioni','esempio'] : schema.map(function(s){ return s.split(':')[0].trim(); }).filter(Boolean);
+        container.innerHTML = items.map(function(n){ return '<label style=\"font-size:11px;margin-right:10px\"><input type=\"checkbox\" class=\"sf-check\" value=\"'+n+'\"> '+n+'</label>'; }).join('');
+    }
+}
+function sfToJson() {
+    var tid = document.querySelector('[name=\"test_type_id\"]');
+    if (!tid) return;
+    tid = tid.value;
+
+    if (tid === 'classification') {
+        var labels = sfLines('sf-allowed_labels');
+        var rulesEl = document.querySelector('[name=\"rules\"]');
+        if (rulesEl && labels.length > 0) {
+            var json = JSON.stringify({allowed_labels: labels});
+            var cur = rulesEl.value || '';
+            var re = /\{["']allowed_labels["']\s*:\s*\[.*?\]\s*\}/;
+            if (re.test(cur)) {
+                rulesEl.value = cur.replace(re, json);
+            } else {
+                rulesEl.value = cur ? cur + '\n' + json : json;
+            }
+            rulesEl.dispatchEvent(new Event('input', {bubbles:true}));
+        }
+        return;
+    }
+
+    var obj = {};
+    if (tid === 'data_extraction') {
+        var schemaLines = sfLines('sf-schema');
+        obj.schema = {}; obj.expected = {};
+        schemaLines.forEach(function(l){ var p=l.split(':'); var k=p[0].trim(); obj.schema[k]=p[1]?p[1].trim():'string'; obj.expected[k]='...'; });
+        obj.required_fields = []; document.querySelectorAll('#sf-required_fields .sf-check:checked').forEach(function(c){ obj.required_fields.push(c.value); });
+    } else if (tid === 'ocr_extraction') {
+        obj.expected_fields = {}; sfLines('sf-expected_fields').forEach(function(l){ var p=l.split(':'); obj.expected_fields[p[0].trim()]=p[1]?p[1].trim():''; });
+        obj.expected_text = (document.getElementById('sf-expected_text')||{}).value || '';
+    } else if (tid === 'rag_qa') {
+        obj.answer_facts = sfLines('sf-answer_facts');
+        obj.must_cite_context = (document.getElementById('sf-must_cite_context')||{}).checked || false;
+        obj.answer_absent = (document.getElementById('sf-answer_absent')||{}).checked || false;
+    } else if (tid === 'summarization') {
+        obj.required_points = sfLines('sf-required_points');
+        obj.max_words = parseInt((document.getElementById('sf-max_words')||{}).value) || 150;
+    } else if (tid === 'code_analysis') {
+        try { obj.expected_findings = JSON.parse((document.getElementById('sf-expected_findings')||{}).value || '[]'); } catch(e) { obj.expected_findings = []; }
+        obj.language = (document.getElementById('sf-language')||{}).value || 'it';
+    } else if (tid === 'code_documentation') {
+        obj.must_include = []; document.querySelectorAll('#sf-must_include .sf-check:checked').forEach(function(c){ obj.must_include.push(c.value); });
+        obj.style = (document.getElementById('sf-style')||{}).value || 'docstring_google';
+    } else if (tid === 'refactoring') {
+        obj.target = (document.getElementById('sf-target')||{}).value || '';
+        obj.constraints = sfLines('sf-constraints');
+        obj.must_preserve_behavior = (document.getElementById('sf-must_preserve_behavior')||{}).checked;
+    } else if (tid === 'image_description') {
+        obj.required_objects = sfLines('sf-required_objects');
+        obj.forbidden_objects = sfLines('sf-forbidden_objects');
+        obj.max_words = parseInt((document.getElementById('sf-img_max_words')||{}).value) || 120;
+    } else if (tid === 'speech_to_text_postprocess') {
+        obj.clean_transcript_contains = sfLines('sf-clean_transcript_contains');
+        try { obj.action_items = JSON.parse((document.getElementById('sf-action_items')||{}).value || '[]'); } catch(e) { obj.action_items = []; }
+    } else if (tid === 'contextual_insight') {
+        obj.expected_insight_count = {min: parseInt((document.getElementById('sf-insight_min')||{}).value)||3, max: parseInt((document.getElementById('sf-insight_max')||{}).value)||8};
+        obj.must_include_themes = sfLines('sf-must_include_themes');
+        obj.must_avoid_themes = sfLines('sf-must_avoid_themes');
+    }
+    var jta = document.querySelector('[name=\"expected_output_json\"]');
+    if (jta && Object.keys(obj).length > 0) { jta.value = JSON.stringify(obj); jta.dispatchEvent(new Event('input', {bubbles:true})); }
+}
+
+function jsonToSf() {
+    var jta = document.querySelector('[name=\"expected_output_json\"]');
+    if (!jta || !jta.value.trim()) return;
+    try { var obj = JSON.parse(jta.value); } catch(e) { return; }
+    var tid = document.querySelector('[name=\"test_type_id\"]');
+    if (!tid) return; tid = tid.value;
+
+    if (tid === 'classification') {
+        var el = document.getElementById('sf-allowed_labels');
+        var rulesEl = document.querySelector('[name=\"rules\"]');
+        var labels = [];
+        if (rulesEl) {
+            var m = (rulesEl.value || '').match(/\{["']allowed_labels["']\s*:\s*\[(.*?)\]\s*\}/);
+            if (m) {
+                try { labels = JSON.parse(m[0]).allowed_labels; } catch(e) {}
+            }
+        }
+        if (!labels.length && el && obj.allowed_labels) {
+            labels = obj.allowed_labels;
+        }
+        if (el && labels.length > 0) el.value = labels.join('\n');
+    } else if (tid === 'data_extraction') {
+        if (obj.schema) { var el=document.getElementById('sf-schema'); if(el){ el.value = Object.keys(obj.schema).map(function(k){return k+': '+obj.schema[k]}).join('\n'); sfPopulateCheckboxes(tid); } }
+        if (obj.required_fields) { setTimeout(function(){ document.querySelectorAll('#sf-required_fields .sf-check').forEach(function(c){ c.checked = obj.required_fields.indexOf(c.value) >= 0; }); }, 100); }
+    }
+    sfShowGroup(tid);
+}
+
+(function() {
+    var sys = document.querySelector('[name="system_prompt"]');
+    var ctx = document.querySelector('[name="context_text"]');
+    var desc = document.querySelector('[name="description"]');
+    var rules = document.querySelector('[name="rules"]');
+    var inp = document.querySelector('[name="input_text"]');
+    var expJson = document.querySelector('[name="expected_output_json"]');
+    var typeSel = document.querySelector('[name="test_type_id"]');
+    var prev = document.getElementById('prompt-preview-text');
+    var exampleBody = document.getElementById('example-body');
+
+    function showExample(tid) {
+        var ex = _typeExamples[tid];
+        if (!ex || !exampleBody) return;
+        exampleBody.innerHTML =
+            '<table style="font-size:12px;margin:0">' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Titolo</th><td style="padding:2px 4px">' + esc(ex.title || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Descrizione / Istruzioni</th><td style="padding:2px 4px">' + esc(ex.description || '') + '</td></tr>' +
+            (ex.system_prompt ? '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">System prompt</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.system_prompt) + '</td></tr>' : '') +
+            (ex.context_text ? '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Contesto</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.context_text) + '</td></tr>' : '') +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Input testuale</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.input_text || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Regole</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.rules || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Expected JSON</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(_defaultExpected[tid] || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Difficolta / Rischio</th><td style="padding:2px 4px">' + esc(ex.difficulty || '') + ' / ' + esc(ex.risk_level || '') + '</td></tr>' +
+            '</table>';
+    }
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function resolveAllPlaceholders(text) {
+        if (!text) return '';
+        var result = text;
+        var jta = document.querySelector('[name="expected_output_json"]');
+        var obj = null;
+        if (jta && jta.value.trim()) { try { obj = JSON.parse(jta.value); } catch(e) {} }
+        var schema = obj ? (obj.schema || {}) : {};
+        var expected = obj ? (obj.expected || obj.expected_fields || {}) : {};
+        var keys = Object.keys(schema).length > 0 ? Object.keys(schema) : Object.keys(expected);
+        var d = (desc && desc.value || '').trim();
+        var ts = typeSel || document.querySelector('[name="test_type_id"]');
+        var tn = ts ? (ts.options && ts.selectedIndex != null ? ts.options[ts.selectedIndex].text : '') : '';
+        var inpVal = (inp && inp.value || document.querySelector('[name="input_text"]')||{}).value || '';
+        var ctxVal = (ctx && ctx.value || document.querySelector('[name="context_text"]')||{}).value || '';
+        var labels = obj ? (obj.allowed_labels || []) : [];
+        var fl = keys.length > 0 ? keys.map(function(k){ return '  - ' + k + ': ' + (schema[k] || 'string'); }).join('\n') : '';
+        var ph = keys.length > 0 ? keys.map(function(k){ return '"' + k + '": "..."'; }).join(', ') : '"...": "..."';
+        var target = obj ? (obj.target || 'migliorare il codice') : 'migliorare il codice';
+        var constraints = obj && obj.constraints ? obj.constraints.map(function(c){ return '  - ' + c; }).join('\n') : '';
+        var fc = obj && obj.format === 'bullet_list' ? 'Usa un elenco puntato. Ogni punto deve essere su una nuova riga preceduto da un trattino (-).' : '';
+        var lc = obj && obj.max_words ? 'Lunghezza massima: ' + obj.max_words + ' parole.' : '';
+        var style = obj ? (obj.style || 'descrizione_neutra') : 'descrizione_neutra';
+        var lang = obj ? (obj.language || 'it') : 'it';
+        var ds = obj ? (obj.style || 'docstring_google') : 'docstring_google';
+        var aar = obj && obj.answer_absent != null ? 'IMPORTANTE: se la risposta NON e presente nel contesto, imposta answer_absent a true e lascia answer_text vuoto.' : '';
+        var pairs = [
+            ['field_placeholders', ph],
+            ['allowed_labels', labels.length > 0 ? labels.join(', ') : ''],
+            ['field_list', fl],
+            ['instructions', d],
+            ['test_type', tn],
+            ['input_text', inpVal],
+            ['context', ctxVal || '(nessun contesto fornito)'],
+            ['target', target],
+            ['constraints', constraints],
+            ['format_constraint', fc],
+            ['length_constraint', lc],
+            ['style', style],
+            ['language', lang],
+            ['doc_style', ds],
+            ['answer_absent_rule', aar]
+        ];
+        pairs.forEach(function(p) {
+            var re = new RegExp('\\{\\{?\\s*' + p[0] + '\\s*\\}?\\}', 'g');
+            result = result.replace(re, p[1]);
+        });
+        return result;
+    }
+
+    function refresh() {
+        var tid = typeSel ? typeSel.value : '';
+        var tp = _templateParts[tid];
+        var parts = [];
+        var s = (sys && sys.value || '').trim();
+        var d = (desc && desc.value || '').trim();
+        var tn = typeSel ? (typeSel.options && typeSel.selectedIndex != null ? typeSel.options[typeSel.selectedIndex].text : '') : '';
+
+        if (s) {
+            parts.push(s);
+        } else {
+            parts.push('Sei un modello in fase di benchmark.\n\nTipo test: ' + (tn || '(seleziona tipo test)') + '\n\nIstruzioni: ' + (d || '(istruzioni)') + '\n');
+        }
+
+        if (tp && tp.body) {
+            var body = resolveAllPlaceholders(tp.body);
+            parts.push(body);
+            if (tp.format) {
+                parts.push('\n' + tp.format);
+            }
+        }
+
+        prev.textContent = parts.join('\n') || 'Compila i campi per vedere il prompt...';
+
+        if (expJson && !expJson.value.trim() && _defaultExpected[tid]) {
+            expJson.value = _defaultExpected[tid];
+        }
+    }
+
+    if (typeSel) {
+        typeSel.addEventListener('change', function() {
+            showExample(typeSel.value);
+            sfShowGroup(typeSel.value);
+            if (expJson && _defaultExpected[typeSel.value]) {
+                var cur = (expJson.value || '').trim();
+                var defs = Object.values(_defaultExpected);
+                var isDefault = !cur || defs.indexOf(cur) >= 0;
+                if (isDefault) {
+                    expJson.value = _defaultExpected[typeSel.value];
+                }
+            }
+            refresh();
+        });
+    }
+    [sys, ctx, desc, rules, inp].forEach(function(el) {
+        if (el) el.addEventListener('input', refresh);
+    });
+    refresh();
+    if (typeSel && typeSel.value) { showExample(typeSel.value); sfShowGroup(typeSel.value); jsonToSf(); }
+    document.querySelectorAll('#structured-fields textarea, #structured-fields input[type=text], #structured-fields input[type=number], #structured-fields select').forEach(function(el){ el.addEventListener('input', sfToJson); });
+    document.querySelectorAll('#structured-fields input[type=checkbox]').forEach(function(el){ el.addEventListener('change', sfToJson); });
+    document.getElementById('sf-schema') && document.getElementById('sf-schema').addEventListener('input', function(){ sfPopulateCheckboxes('data_extraction'); sfToJson(); });
+})();
+</script>
+
 {% elif mode == 'edit' %}
+
+<div id="example-panel" class="lib-panel" style="margin-bottom:12px">
+    <div class="lib-panel-header" onclick="this.parentElement.classList.toggle('collapsed')" style="background:#e3f2fd">
+        <span class="lib-toggle">&#9660;</span>
+        <strong>Esempio compilato — guida di riferimento</strong>
+    </div>
+    <div class="lib-panel-body" id="example-body" style="display:block;font-size:12px;padding:8px 12px">
+        Esempio per il tipo test corrente.
+    </div>
+</div>
 
 <form method="post" action="/test-cases/{{ tc.id }}" enctype="multipart/form-data" class="form">
     <div class="form-group">
         <label>Titolo *</label>
         <input type="text" name="title" value="{{ tc.title | e }}" required>
+        <div class="field-help">Nome del test case. Identifica il test nelle liste, nei report e nei grafici.</div>
     </div>
     <div class="form-group">
         <label>Tipo test *</label>
@@ -159,46 +546,159 @@
             <option value="{{ tt.id | e }}" {% if tt.id == tc.test_type_id %}selected{% endif %}>{{ tt.label | e }}</option>
             {% endfor %}
         </select>
+        <div class="field-help">Determina la formula di scoring, le metriche deterministiche e la validazione LLM applicate. Ogni tipo ha regole di scoring diverse. <b>Cambiare tipo altera le metriche e il formato risposta nel prompt.</b></div>
     </div>
     <div class="form-group">
-        <label>Descrizione</label>
-        <textarea name="description" rows="3">{{ tc.description or '' | e }}</textarea>
+        <label>Libreria</label>
+        <select name="library_id">
+            <option value="" {% if not tc.library_id %}selected{% endif %}>-- Generale --</option>
+            {% for lib in libraries %}
+            <option value="{{ lib.id | e }}" {% if lib.id == tc.library_id %}selected{% endif %}>{{ lib.label | e }}</option>
+            {% endfor %}
+        </select>
+        <div class="field-help">Raggruppa il test per dominio applicativo. Lasciare vuoto per "Generale". La libreria e' un contenitore tematico: tutti i test di una libreria condividono lo stesso ambito (es. "Documenti Legali", "Ambito Medico").</div>
     </div>
+    <div class="form-group">
+        <label>Descrizione / Istruzioni</label>
+        <textarea name="description" rows="3">{{ tc.description or '' | e }}</textarea>
+        <div class="field-help"><b>Istruzioni su cosa deve fare il modello.</b> Questo testo viene inserito nel prompt dopo "Istruzioni:". Esempio: "Classifica il ticket nella categoria corretta" o "Rispondi alla domanda basandoti ESCLUSIVAMENTE sul contesto fornito". Appare nella sezione <code>Istruzioni: {description}</code> del prompt assemblato.</div>
+    </div>
+    <div class="form-group">
+        <label>Regole</label>
+        <textarea name="rules" rows="3">{{ tc.rules or '' | e }}</textarea>
+        <div class="field-help"><b>Regole di comportamento del modello.</b> Inserito nel prompt dopo "Regole:". <b>Vuoto</b> se il test case e' stato migrato e non aveva regole separate. Per popolarlo: scrivi qui i vincoli operativi. Esempio: "Non usare categorie diverse da quelle elencate. Restituisci solo la label scelta. Non aggiungere spiegazioni." oppure "Cita parti del contesto per giustificare la risposta. Non usare conoscenze esterne al contesto."</div>
+    </div>
+
+    <div class="form-group" style="background:#f5f5f5;padding:8px 12px;border-radius:4px;margin-bottom:12px">
+        <label style="cursor:pointer;font-weight:bold" onclick="var b=document.getElementById('structured-fields');b.style.display=b.style.display==='none'?'block':'none'">&#9660; Compilazione assistita per tipo test</label>
+        <div id="structured-fields" style="display:block;margin-top:8px">
+            <div class="field-help" style="margin-bottom:8px">Compila i campi sotto per generare automaticamente le regole e il JSON atteso.</div>
+            <div id="sf-classification" class="sf-group">
+                <label style="font-size:12px">Allowed Labels (una per riga)</label>
+                <textarea id="sf-allowed_labels" rows="3" style="font-size:11px;width:100%" placeholder="helpdesk_password_reset&#10;network_issue&#10;billing"></textarea>
+            </div>
+            <div id="sf-data_extraction" class="sf-group" style="display:none">
+                <label style="font-size:12px">Schema campi (nome: tipo, uno per riga)</label>
+                <textarea id="sf-schema" rows="3" style="font-size:11px;width:100%" placeholder="invoice_number: string&#10;date: date&#10;total: number"></textarea>
+                <label style="font-size:12px;margin-top:6px">Campi obbligatori (checkbox)</label>
+                <div id="sf-required_fields"></div>
+            </div>
+            <div id="sf-ocr_extraction" class="sf-group" style="display:none">
+                <label style="font-size:12px">Expected fields (nome: valore, uno per riga)</label>
+                <textarea id="sf-expected_fields" rows="3" style="font-size:11px;width:100%" placeholder="nome: Mario Rossi&#10;data: 15/03/1985&#10;luogo: Milano"></textarea>
+                <label style="font-size:12px;margin-top:6px">Expected text</label>
+                <input type="text" id="sf-expected_text" style="font-size:11px;width:100%" placeholder="Mario Rossi, nato 15/03/1985 a Milano">
+            </div>
+            <div id="sf-rag_qa" class="sf-group" style="display:none">
+                <label style="font-size:12px">Answer facts (uno per riga)</label>
+                <textarea id="sf-answer_facts" rows="3" style="font-size:11px;width:100%" placeholder="Aprire bridge entro 15 minuti&#10;Notificare incident manager"></textarea>
+                <div style="margin-top:6px"><label style="font-size:12px"><input type="checkbox" id="sf-must_cite_context"> Must cite context</label></div>
+                <div><label style="font-size:12px"><input type="checkbox" id="sf-answer_absent"> Answer absent</label></div>
+            </div>
+            <div id="sf-summarization" class="sf-group" style="display:none">
+                <label style="font-size:12px">Required points (uno per riga)</label>
+                <textarea id="sf-required_points" rows="3" style="font-size:11px;width:100%" placeholder="Decisione approvata&#10;Owner assegnato"></textarea>
+                <label style="font-size:12px;margin-top:6px">Max words</label>
+                <input type="number" id="sf-max_words" style="font-size:11px;width:80px" placeholder="150">
+            </div>
+            <div id="sf-code_analysis" class="sf-group" style="display:none">
+                <label style="font-size:12px">Expected findings (JSON array)</label>
+                <textarea id="sf-expected_findings" rows="3" style="font-size:11px;width:100%" placeholder='[{"type":"security","severity":"high","description":"SQL injection"}]'></textarea>
+                <label style="font-size:12px;margin-top:6px">Language</label>
+                <select id="sf-language"><option value="it">Italiano</option><option value="en">English</option></select>
+            </div>
+            <div id="sf-code_documentation" class="sf-group" style="display:none">
+                <label style="font-size:12px">Must include (checkbox)</label>
+                <div id="sf-must_include"></div>
+                <label style="font-size:12px;margin-top:6px">Style</label>
+                <select id="sf-style"><option value="docstring_google">Google</option><option value="other">Altro</option></select>
+            </div>
+            <div id="sf-refactoring" class="sf-group" style="display:none">
+                <label style="font-size:12px">Target</label>
+                <input type="text" id="sf-target" style="font-size:11px;width:100%" placeholder="ridurre duplicazione">
+                <label style="font-size:12px;margin-top:6px">Constraints (uno per riga)</label>
+                <textarea id="sf-constraints" rows="2" style="font-size:11px;width:100%" placeholder="non cambiare firma&#10;non introdurre dipendenze"></textarea>
+                <div style="margin-top:6px"><label style="font-size:12px"><input type="checkbox" id="sf-must_preserve_behavior" checked> Must preserve behavior</label></div>
+            </div>
+            <div id="sf-image_description" class="sf-group" style="display:none">
+                <label style="font-size:12px">Required objects (uno per riga)</label>
+                <textarea id="sf-required_objects" rows="2" style="font-size:11px;width:100%" placeholder="bicicletta&#10;casco"></textarea>
+                <label style="font-size:12px;margin-top:6px">Forbidden objects (uno per riga)</label>
+                <textarea id="sf-forbidden_objects" rows="2" style="font-size:11px;width:100%" placeholder="automobile"></textarea>
+                <label style="font-size:12px;margin-top:6px">Max words</label>
+                <input type="number" id="sf-img_max_words" style="font-size:11px;width:80px" placeholder="120">
+            </div>
+            <div id="sf-speech_to_text_postprocess" class="sf-group" style="display:none">
+                <label style="font-size:12px">Clean transcript contains (uno per riga)</label>
+                <textarea id="sf-clean_transcript_contains" rows="2" style="font-size:11px;width:100%" placeholder="deploy venerdi&#10;Marco si occupa del rollback"></textarea>
+                <label style="font-size:12px;margin-top:6px">Action items (JSON array)</label>
+                <textarea id="sf-action_items" rows="2" style="font-size:11px;width:100%" placeholder='[{"owner":"Marco","task":"rollback","deadline":null}]'></textarea>
+            </div>
+            <div id="sf-contextual_insight" class="sf-group" style="display:none">
+                <label style="font-size:12px">Insight count min / max</label>
+                <input type="number" id="sf-insight_min" style="font-size:11px;width:60px" placeholder="3">
+                <input type="number" id="sf-insight_max" style="font-size:11px;width:60px" placeholder="8">
+                <label style="font-size:12px;margin-top:6px">Must include themes (uno per riga)</label>
+                <textarea id="sf-must_include_themes" rows="2" style="font-size:11px;width:100%" placeholder="responsabilita&#10;onere della prova"></textarea>
+                <label style="font-size:12px;margin-top:6px">Must avoid themes (uno per riga)</label>
+                <textarea id="sf-must_avoid_themes" rows="2" style="font-size:11px;width:100%" placeholder="penale&#10;dolo"></textarea>
+            </div>
+        </div>
+    </div>
+
     <div class="form-group">
         <label>Input testuale</label>
         <textarea name="input_text" rows="6">{{ tc.input_text or '' | e }}</textarea>
+        <div class="field-help">Il testo da elaborare, inviato al modello. Per test RAG: inserire qui la domanda e usare il campo Contesto per il documento di riferimento. Per classificazione: il ticket o testo da classificare. Per estrazione dati: il testo da cui estrarre i campi. Appare nel prompt dopo "Input testuale:".</div>
     </div>
     <div class="form-group">
         <label>Contesto</label>
         <textarea name="context_text" rows="4">{{ tc.context_text or '' | e }}</textarea>
+        <div class="field-help">Documento o contesto di riferimento per test RAG / Q&A documentale. <b>Vuoto</b> se il test non e' di tipo RAG. Se popolato, il modello deve rispondere basandosi solo su questo testo. Appare nel prompt dopo "CONTESTO:".</div>
     </div>
     <div class="form-group">
         <label>System prompt (opzionale)</label>
         <textarea name="system_prompt" rows="3">{{ tc.system_prompt or '' | e }}</textarea>
+        <div class="field-help">Istruzioni di sistema preposte al prompt utente come messaggio separato (ruolo "system"). <b>Vuoto</b> per usare il default: "Sei un modello in fase di benchmark. Tipo test: NomeTipo". Popolare solo per dare al modello un ruolo o una personalita' specifica (es. "Sei un avvocato civilista. Analizza il seguente contratto.").</div>
     </div>
     <div class="form-group">
-        <label>Prompt inviato al modello / template del test case</label>
-        <textarea name="user_prompt_template" rows="3">{{ tc.user_prompt_template or '' | e }}</textarea>
+        <label>Risultato atteso (JSON) — CAMPO FONDAMENTALE</label>
+        <textarea name="expected_output_json" rows="8">{{ tc.expected_output_json or '' | e }}</textarea>
+        <div class="field-help" style="font-size:11px;color:#555;margin-top:3px;line-height:1.5">
+            <b>Questo e' il campo piu' importante del test case.</b> Definisce COSA il modello deve produrre e COME viene valutato.<br>
+            <b>Deve essere un JSON valido.</b> I campi principali, che variano per tipo test:<br><br>
+            <b>Per TUTTI i tipi:</b><br>
+            <code>schema</code> — la struttura JSON attesa (es. <code>{"label":"string"}</code>, <code>{"invoice_number":"string","total":"number"}</code>). <b>Obbligatorio.</b> Usato per validare che l'output abbia i tipi corretti.<br>
+            <code>expected</code> — i <b>valori ground-truth</b> attesi (es. <code>{"label":"network_issue"}</code>, <code>{"total":1280.40}</code>). Confrontati campo per campo con l'output del modello.<br>
+            <code>required_fields</code> — lista dei campi obbligatori. Se mancano → penalita'.<br>
+            <code>allowed_labels</code> — classi ammesse per classificazione (es. <code>["helpdesk","network_issue","billing"]</code>).<br><br>
+            <b>Specifici per tipo:</b> RAG: <code>answer_facts</code>, <code>must_cite_context</code>, <code>answer_absent</code>. Sintesi: <code>required_points</code>, <code>max_words</code>. Code analysis: <code>expected_findings</code> (con type/severity/description). Refactoring: <code>constraints</code>, <code>target</code>. Code doc: <code>must_include</code>, <code>expected_parameters</code>. Image desc: <code>required_objects</code>, <code>max_words</code>. Speech-to-text: <code>action_items</code>, <code>clean_transcript_contains</code>. Contextual insight: <code>must_include_themes</code>, <code>must_avoid_themes</code>.<br><br>
+            <b>Esempio classification:</b> <code>{"schema":{"label":"string"},"expected":{"label":"network_issue"},"required_fields":["label"],"allowed_labels":["helpdesk_password_reset","network_issue","billing","other"]}</code><br>
+            <b>Esempio data_extraction:</b> <code>{"schema":{"invoice_number":"string","date":"date","total":"number"},"expected":{"invoice_number":"42","date":"2026-04-15","total":1280.40},"required_fields":["invoice_number","date","total"]}</code><br>
+            <b>Esempio RAG:</b> <code>{"answer_facts":["26 giorni di ferie","Richiedere sul portale HR"],"must_cite_context":true,"answer_absent":false}</code><br>
+            <b>Modificarlo altera immediatamente lo scoring del test.</b>
+        </div>
     </div>
-    <div class="form-group">
-        <label>Risultato atteso (JSON)</label>
-        <textarea name="expected_output_json" rows="6">{{ tc.expected_output_json or '' | e }}</textarea>
-    </div>
+
     <div class="form-group">
         <label>Expected text</label>
-        <textarea name="expected_text" rows="4">{{ tc.expected_text or '' | e }}</textarea>
+        <textarea name="expected_text" rows="3">{{ tc.expected_text or '' | e }}</textarea>
+        <div class="field-help">Testo libero atteso (non JSON). <b>Usato solo per tipi NON strutturati</b> (RAG, sintesi, code analysis, refactoring, image desc, contextual insight). Per tipi strutturati (classification, data_extraction, OCR) viene ignorato. Serve come fallback per il validator LLM se expected_output_json e' vuoto, e per metriche lessicali (exact_match, Jaccard). <b>Popolare expected_output_json e' preferibile e piu' preciso.</b></div>
     </div>
     <div class="form-group">
         <label>Expected labels (JSON)</label>
-        <textarea name="expected_labels_json" rows="3">{{ tc.expected_labels_json or '' | e }}</textarea>
+        <textarea name="expected_labels_json" rows="2">{{ tc.expected_labels_json or '' | e }}</textarea>
+        <div class="field-help">Vecchio formato etichette (es. <code>{"correct_label":"billing"}</code>). <b>Preferire expected_output_json</b> che contiene anche schema e required_fields. Questo campo e' mantenuto per retrocompatibilita' con test legacy.</div>
     </div>
     <div class="form-group">
         <label>Rubrica (JSON)</label>
-        <textarea name="rubric_json" rows="4">{{ tc.rubric_json or '' | e }}</textarea>
+        <textarea name="rubric_json" rows="3">{{ tc.rubric_json or '' | e }}</textarea>
+        <div class="field-help"><b>Guida per il validator LLM, NON per lo scoring deterministico.</b> Criteri di valutazione aggiuntivi passati al modello giudice. Esempio: <code>{"field_match_weight":0.6,"schema_compliance_weight":0.4}</code>. Il validator usa questa rubrica per assegnare <code>semantic_score</code> e <code>format_score</code>. <b>Non influisce sulle metriche deterministiche</b> (Jaccard, field_accuracy, exact_match) che usano solo expected_output_json.</div>
     </div>
     <div class="form-group">
         <label>Tag (JSON array)</label>
         <input type="text" name="tags_json" value="{{ tc.tags_json or '' | e }}">
+        <div class="field-help">Etichette di categorizzazione. Esempio: <code>["classification","helpdesk","IT"]</code>. Usate per filtro e analisi.</div>
     </div>
     <div class="form-row">
         <div class="form-group">
@@ -208,14 +708,16 @@
                 <option value="medium" {% if tc.difficulty == 'medium' %}selected{% endif %}>Medium</option>
                 <option value="hard" {% if tc.difficulty == 'hard' %}selected{% endif %}>Hard</option>
             </select>
+            <div class="field-help">Livello di difficolta' del test. Usato per analisi comparative e filtri.</div>
         </div>
         <div class="form-group">
-            <label>Rischio</label>
+            <label>Livello rischio</label>
             <select name="risk_level">
                 <option value="low" {% if tc.risk_level == 'low' %}selected{% endif %}>Basso</option>
                 <option value="medium" {% if tc.risk_level == 'medium' %}selected{% endif %}>Medio</option>
                 <option value="high" {% if tc.risk_level == 'high' %}selected{% endif %}>Alto</option>
             </select>
+            <div class="field-help">Impatto di un errore in produzione. Basso: task ausiliario. Alto: decisioni critiche.</div>
         </div>
         <div class="form-group">
             <label>Abilitato</label>
@@ -223,14 +725,176 @@
                 <option value="true" {% if tc.enabled %}selected{% endif %}>Si</option>
                 <option value="false" {% if not tc.enabled %}selected{% endif %}>No</option>
             </select>
+            <div class="field-help">Se <b>Si</b>, eseguito nelle run. Se <b>No</b>, ignorato.</div>
         </div>
     </div>
     <div class="form-group">
         <label>File (opzionale)</label>
         <input type="file" name="file">
+        <div class="field-help">.txt, .md, .json, .csv, .pdf, .png, .jpg, .jpeg — input alternativo al testo.</div>
     </div>
     <button type="submit" class="btn">Aggiorna Test Case</button>
 </form>
+
+{% if tc.user_prompt_template %}
+<div id="compat-warning" style="margin-top:12px;background:#fff3cd;padding:10px;border-radius:4px;border:1px solid #ffc107;font-size:12px;display:block">
+    <strong>&#9888; Retrocompatibilita:</strong> questo test case ha un prompt esistente. <b>Modificando i campi sopra</b> (system prompt, istruzioni, regole, input, contesto, tipo test) il prompt verra' <b>rigenerato</b> al salvataggio, sostituendo quello attuale. L'anteprima sotto mostra il prompt <b>attuale</b>. Perderai il prompt corrente solo se modifichi e salvi.
+</div>
+{% endif %}
+
+<div id="prompt-preview" style="margin-top:15px;background:#f0f4f0;padding:10px;border-radius:4px;border:1px solid #c8e6c9">
+    <strong style="font-size:13px" id="preview-title">Anteprima prompt attuale</strong>
+    <pre id="prompt-preview-text" style="max-height:300px;overflow:auto;font-size:11px;margin:5px 0 0 0;white-space:pre-wrap;background:#fff;padding:8px;border-radius:3px">{{ tc.user_prompt_template or 'Il prompt verra assemblato al salvataggio.' | e }}</pre>
+</div>
+
+<script>
+(function() {
+    var _typeFormats = {{ type_formats | tojson }};
+    var _templateParts = {{ template_parts | tojson }};
+    var _defaultExpected = {{ default_expected | tojson }};
+    var _typeExamples = {{ type_examples | tojson }};
+    var _originalPrompt = {{ (tc.user_prompt_template or '') | tojson }};
+    var _dirty = false;
+    var sys = document.querySelector('[name="system_prompt"]');
+    var ctx = document.querySelector('[name="context_text"]');
+    var desc = document.querySelector('[name="description"]');
+    var rules = document.querySelector('[name="rules"]');
+    var inp = document.querySelector('[name="input_text"]');
+    var expJson = document.querySelector('[name="expected_output_json"]');
+    var typeSel = document.querySelector('[name="test_type_id"]');
+    var prev = document.getElementById('prompt-preview-text');
+    var compatWarn = document.getElementById('compat-warning');
+    var prevTitle = document.getElementById('preview-title');
+    var exampleBody = document.getElementById('example-body');
+
+    function showExample(tid) {
+        var ex = _typeExamples[tid];
+        if (!ex || !exampleBody) return;
+        exampleBody.innerHTML =
+            '<table style="font-size:12px;margin:0">' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Titolo</th><td style="padding:2px 4px">' + esc(ex.title || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Descrizione / Istruzioni</th><td style="padding:2px 4px">' + esc(ex.description || '') + '</td></tr>' +
+            (ex.system_prompt ? '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">System prompt</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.system_prompt) + '</td></tr>' : '') +
+            (ex.context_text ? '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Contesto</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.context_text) + '</td></tr>' : '') +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Input testuale</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.input_text || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Regole</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(ex.rules || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Expected JSON</th><td style="padding:2px 4px;font-family:monospace;font-size:11px;white-space:pre-wrap">' + esc(_defaultExpected[tid] || '') + '</td></tr>' +
+            '<tr><th style="text-align:right;padding:2px 8px;white-space:nowrap">Difficolta / Rischio</th><td style="padding:2px 4px">' + esc(ex.difficulty || '') + ' / ' + esc(ex.risk_level || '') + '</td></tr>' +
+            '</table>';
+    }
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function resolveAllPlaceholders(text) {
+        if (!text) return '';
+        var result = text;
+        var jta = document.querySelector('[name="expected_output_json"]');
+        var obj = null;
+        if (jta && jta.value.trim()) { try { obj = JSON.parse(jta.value); } catch(e) {} }
+        var schema = obj ? (obj.schema || {}) : {};
+        var expected = obj ? (obj.expected || obj.expected_fields || {}) : {};
+        var keys = Object.keys(schema).length > 0 ? Object.keys(schema) : Object.keys(expected);
+        var d = (desc && desc.value || '').trim();
+        var tn = typeSel ? (typeSel.options && typeSel.selectedIndex != null ? typeSel.options[typeSel.selectedIndex].text : '') : '';
+        var inpVal = (inp && inp.value || '').trim();
+        var ctxVal = (ctx && ctx.value || '').trim();
+        var labels = obj ? (obj.allowed_labels || []) : [];
+        var fl = keys.length > 0 ? keys.map(function(k){ return '  - ' + k + ': ' + (schema[k] || 'string'); }).join('\n') : '';
+        var ph = keys.length > 0 ? keys.map(function(k){ return '"' + k + '": "..."'; }).join(', ') : '"...": "..."';
+        var target = obj ? (obj.target || 'migliorare il codice') : 'migliorare il codice';
+        var constraints = obj && obj.constraints ? obj.constraints.map(function(c){ return '  - ' + c; }).join('\n') : '';
+        var fc = obj && obj.format === 'bullet_list' ? 'Usa un elenco puntato. Ogni punto deve essere su una nuova riga preceduto da un trattino (-).' : '';
+        var lc = obj && obj.max_words ? 'Lunghezza massima: ' + obj.max_words + ' parole.' : '';
+        var style = obj ? (obj.style || 'descrizione_neutra') : 'descrizione_neutra';
+        var lang = obj ? (obj.language || 'it') : 'it';
+        var ds = obj ? (obj.style || 'docstring_google') : 'docstring_google';
+        var aar = obj && obj.answer_absent != null ? 'IMPORTANTE: se la risposta NON e presente nel contesto, imposta answer_absent a true e lascia answer_text vuoto.' : '';
+        var pairs = [
+            ['field_placeholders', ph],
+            ['allowed_labels', labels.length > 0 ? labels.join(', ') : ''],
+            ['field_list', fl],
+            ['instructions', d],
+            ['test_type', tn],
+            ['input_text', inpVal],
+            ['context', ctxVal || '(nessun contesto fornito)'],
+            ['target', target],
+            ['constraints', constraints],
+            ['format_constraint', fc],
+            ['length_constraint', lc],
+            ['style', style],
+            ['language', lang],
+            ['doc_style', ds],
+            ['answer_absent_rule', aar]
+        ];
+        pairs.forEach(function(p) {
+            var re = new RegExp('\\{\\{?\\s*' + p[0] + '\\s*\\}?\\}', 'g');
+            result = result.replace(re, p[1]);
+        });
+        return result;
+    }
+
+    function refresh() {
+        if (!_dirty && _originalPrompt) {
+            return;
+        }
+        var tid = typeSel ? typeSel.value : '';
+        var tp = _templateParts[tid];
+        var parts = [];
+        var s = (sys && sys.value || '').trim();
+        var d = (desc && desc.value || '').trim();
+        var tn = typeSel ? (typeSel.options && typeSel.selectedIndex != null ? typeSel.options[typeSel.selectedIndex].text : '') : '';
+
+        if (s) {
+            parts.push(s);
+        } else {
+            parts.push('Sei un modello in fase di benchmark.\n\nTipo test: ' + (tn || '{{ tc.test_type_id | e }}') + '\n\nIstruzioni: ' + (d || '(istruzioni)') + '\n');
+        }
+
+        if (tp && tp.body) {
+            var body = resolveAllPlaceholders(tp.body);
+            parts.push(body);
+            if (tp.format) {
+                parts.push('\n' + tp.format);
+            }
+        }
+
+        prev.textContent = parts.join('\n') || 'Il prompt verra assemblato al salvataggio.';
+        prevTitle.textContent = 'Anteprima prompt rigenerato';
+        prev.parentElement.style.background = '#fff3cd';
+    }
+
+    function markDirty() {
+        if (!_dirty && _originalPrompt) {
+            _dirty = true;
+            if (compatWarn) compatWarn.style.display = 'block';
+        }
+        if (_dirty) refresh();
+    }
+
+    if (typeSel) {
+        typeSel.addEventListener('change', function() {
+            markDirty();
+            showExample(typeSel.value);
+            sfShowGroup(typeSel.value);
+            if (expJson && _defaultExpected[typeSel.value]) {
+                var cur = (expJson.value || '').trim();
+                var defs = Object.values(_defaultExpected);
+                var isDefault = !cur || defs.indexOf(cur) >= 0;
+                if (isDefault) expJson.value = _defaultExpected[typeSel.value];
+            }
+            refresh();
+        });
+    }
+    [sys, ctx, desc, rules, inp, expJson].forEach(function(el) {
+        if (el) el.addEventListener('input', markDirty);
+    });
+    if (typeSel && typeSel.value) { showExample(typeSel.value); sfShowGroup(typeSel.value); jsonToSf(); }
+    document.querySelectorAll('#structured-fields textarea, #structured-fields input[type=text], #structured-fields input[type=number], #structured-fields select').forEach(function(el){ el.addEventListener('input', sfToJson); });
+    document.querySelectorAll('#structured-fields input[type=checkbox]').forEach(function(el){ el.addEventListener('change', sfToJson); });
+    var sfSchema = document.getElementById('sf-schema');
+    if (sfSchema) sfSchema.addEventListener('input', function(){ sfPopulateCheckboxes('data_extraction'); sfToJson(); });
+})();
+</script>
 
 {% elif mode == 'detail' %}
 
@@ -238,16 +902,22 @@
 <table>
     <tr><th>ID</th><td>{{ tc.id }}</td></tr>
     <tr><th>Tipo</th><td>{{ tc.test_type_id | e }}</td></tr>
-    <tr><th>Descrizione</th><td>{{ tc.description or '' | e }}</td></tr>
+    <tr><th>Libreria</th><td>{{ tc.library_id or 'general' | e }}</td></tr>
+    <tr><th>Descrizione / Istruzioni</th><td>{{ tc.description or '' | e }}</td></tr>
+    <tr><th>Regole</th><td><pre>{{ tc.rules or '' | e }}</pre></td></tr>
     <tr><th>Difficolta'</th><td>{{ tc.difficulty | e }}</td></tr>
     <tr><th>Rischio</th><td>{{ tc.risk_level | e }}</td></tr>
     <tr><th>Abilitato</th><td>{{ 'Si' if tc.enabled else 'No' }}</td></tr>
+    <tr><th>File</th><td>{{ tc.input_file_path or '-' | e }}</td></tr>
+    <tr><th>Tag</th><td>{{ tc.tags_json or '' | e }}</td></tr>
     <tr><th>Input</th><td><pre>{{ tc.input_text or '' | e }}</pre></td></tr>
     <tr><th>Contesto</th><td><pre>{{ tc.context_text or '' | e }}</pre></td></tr>
     <tr><th>System Prompt</th><td><pre>{{ tc.system_prompt or '' | e }}</pre></td></tr>
-    <tr><th>Expected JSON</th><td><pre>{{ tc.expected_output_json or '' | e }}</pre></td></tr>
+    <tr><th>Prompt template</th><td><pre style="max-height:200px;overflow:auto">{{ tc.user_prompt_template or '' | e }}</pre></td></tr>
+    <tr><th>Expected JSON</th><td><pre style="max-height:200px;overflow:auto">{{ tc.expected_output_json or '' | e }}</pre></td></tr>
     <tr><th>Expected Text</th><td><pre>{{ tc.expected_text or '' | e }}</pre></td></tr>
-    <tr><th>Rubrica</th><td><pre>{{ tc.rubric_json or '' | e }}</pre></td></tr>
+    <tr><th>Expected Labels</th><td><pre>{{ tc.expected_labels_json or '' | e }}</pre></td></tr>
+    <tr><th>Rubrica</th><td><pre style="max-height:200px;overflow:auto">{{ tc.rubric_json or '' | e }}</pre></td></tr>
 </table>
 <a href="/test-cases/{{ tc.id }}/edit" class="btn">Modifica</a>
 <a href="/test-cases" class="btn">Torna alla lista</a>

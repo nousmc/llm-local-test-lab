@@ -32,11 +32,13 @@ class TestTypeSchema(BaseModel):
 class TestCaseCreate(BaseModel):
     test_type_id: str
     title: str
+    library_id: Optional[str] = None
     description: Optional[str] = None
     input_text: Optional[str] = None
     context_text: Optional[str] = None
     system_prompt: Optional[str] = None
     user_prompt_template: Optional[str] = None
+    rules: Optional[str] = None
     expected_output_json: Optional[str] = None
     expected_text: Optional[str] = None
     expected_labels_json: Optional[str] = None
@@ -50,11 +52,13 @@ class TestCaseCreate(BaseModel):
 class TestCaseUpdate(BaseModel):
     test_type_id: Optional[str] = None
     title: Optional[str] = None
+    library_id: Optional[str] = None
     description: Optional[str] = None
     input_text: Optional[str] = None
     context_text: Optional[str] = None
     system_prompt: Optional[str] = None
     user_prompt_template: Optional[str] = None
+    rules: Optional[str] = None
     expected_output_json: Optional[str] = None
     expected_text: Optional[str] = None
     expected_labels_json: Optional[str] = None
@@ -68,6 +72,7 @@ class TestCaseUpdate(BaseModel):
 class TestCaseOut(BaseModel):
     id: int
     test_type_id: str
+    library_id: Optional[str] = None
     title: str
     description: Optional[str] = None
     input_text: Optional[str] = None
@@ -75,6 +80,7 @@ class TestCaseOut(BaseModel):
     context_text: Optional[str] = None
     system_prompt: Optional[str] = None
     user_prompt_template: Optional[str] = None
+    rules: Optional[str] = None
     expected_output_json: Optional[str] = None
     expected_text: Optional[str] = None
     expected_labels_json: Optional[str] = None
@@ -173,6 +179,27 @@ class ReportOut(BaseModel):
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class PromptPreviewRequest(BaseModel):
+    test_type_id: str
+    title: str = ""
+    description: str = ""
+    input_text: str = ""
+    context_text: str = ""
+    system_prompt: str = ""
+    custom_rules: str = ""
+    expected_output_json: str = ""
+
+
+class PromptPreviewResponse(BaseModel):
+    prompt: str
+    valid: bool
+    issues: list[str]
+    warnings: list[str]
+    checks: dict
+    expected_schema_preview: dict
+    status: str = "valid"
 
 
 class ProbeResponse(BaseModel):

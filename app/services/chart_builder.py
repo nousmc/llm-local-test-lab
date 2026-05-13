@@ -198,6 +198,12 @@ def build_run_charts(db: Session, test_run_id: int) -> dict:
             "backgroundColor": colors[i % len(colors)],
         })
 
+    model_weighted_scores = {}
+    for k in model_scores:
+        avg = round(sum(model_scores[k]) / len(model_scores[k]), 4) if model_scores[k] else 0
+        pr = round(model_pass.get(k, 0) / model_total.get(k, 1) * 100, 1) if model_total.get(k, 0) else 0
+        model_weighted_scores[k] = round(avg * (pr / 100.0), 4)
+
     return {
         "model_scores": {
             "labels": [model_labels.get(k, k) for k in model_scores],
@@ -228,4 +234,8 @@ def build_run_charts(db: Session, test_run_id: int) -> dict:
         },
         "library_model_labels": lib_display_labels,
         "library_model_datasets": lib_model_datasets,
+        "model_weighted_scores": {
+            "labels": [model_labels.get(k, k) for k in model_weighted_scores],
+            "data": [model_weighted_scores[k] for k in model_weighted_scores],
+        },
     }

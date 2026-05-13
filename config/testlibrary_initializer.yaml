@@ -1,0 +1,114 @@
+- id: general
+  label: Libreria Generale
+  enabled: true
+  description: Test per general
+  domain: general
+  tags_json: '["general"]'
+- id: legal
+  label: Documenti Legali
+  enabled: true
+  description: Test per legal
+  domain: legal
+  tags_json: '["legal"]'
+- id: academy
+  label: Academy STEM
+  enabled: true
+  description: Benchmark scientifici su matematica, fisica, chimica, biologia e metodo sperimentale
+  domain: stem
+  tags_json: '["academy", "stem", "science", "math", "physics"]'
+- id: network_security
+  label: Network Security
+  enabled: true
+  description: Test per network_security
+  domain: network_security
+  tags_json: '["network_security"]'
+- id: network_monitoring
+  label: Network Monitoring
+  enabled: true
+  description: Test per network_monitoring
+  domain: network_monitoring
+  tags_json: '["network_monitoring"]'
+- id: medical
+  label: Ambito Medico
+  enabled: true
+  description: Test per medical
+  domain: medical
+  tags_json: '["medical"]'
+- id: claims_management
+  label: Gestione Reclami
+  enabled: true
+  description: Test per claims_management
+  domain: claims_management
+  tags_json: '["claims_management"]'
+- id: customer_support
+  label: Assistenza Clienti
+  enabled: true
+  description: Test per customer_support
+  domain: customer_support
+  tags_json: '["customer_support"]'
+- id: online_booking
+  label: Prenotazioni
+  enabled: true
+  description: Test per online_booking
+  domain: online_booking
+  tags_json: '["online_booking"]'
+- id: system_administration
+  label: System Admin
+  enabled: true
+  description: Test per system_administration
+  domain: system_administration
+  tags_json: '["system_administration"]'
+- id: ecommerce
+  label: E-commerce
+  enabled: true
+  description: Test per ecommerce
+  domain: ecommerce
+  tags_json: '["ecommerce"]'
+- id: software_development
+  label: Software Dev
+  enabled: true
+  description: Test per software_development
+  domain: software_development
+  tags_json: '["software_development"]'
+- id: document_processing
+  label: Documenti
+  enabled: true
+  description: Test per document_processing
+  domain: document_processing
+  tags_json: '["document_processing"]'
+- id: compliance
+  label: Compliance
+  enabled: true
+  description: Test per compliance
+  domain: compliance
+  tags_json: '["compliance"]'
+- id: agent_development
+  label: Agent Development
+  enabled: true
+  description: Test su sviluppo, reasoning, tool-calling e orchestrazione di agenti AI complessi
+  domain: ai_agents
+  tags_json: '["agents", "ai", "reasoning", "tool_calling", "orchestration"]'
+- id: athletics
+  label: Preparazione Atletica
+  enabled: true
+  description: Piani allenamento, nutrizione, recupero e strategia sportiva
+  domain: athletics
+  tags_json: '["athletics", "sport", "training", "nutrizione", "recupero"]'
+- id: marketing
+  label: Marketing
+  enabled: true
+  description: Strategie marketing, branding, comunicazione commerciale
+  domain: marketing
+  tags_json: '["marketing", "branding", "comunicazione"]'
+- id: business_strategy
+  label: Strategia Aziendale
+  enabled: true
+  description: Pianificazione strategica, pivot, crescita e internazionalizzazione
+  domain: business_strategy
+  tags_json: '["strategia", "crescita", "internazionalizzazione", "pivot"]'
+- id: communication
+  label: Comunicazione
+  enabled: true
+  description: Comunicazione interna, crisis management, pubbliche relazioni
+  domain: communication
+  tags_json: '["comunicazione", "crisis", "pr", "relazioni"]'

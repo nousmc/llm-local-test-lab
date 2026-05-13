@@ -74,12 +74,15 @@ def generate_report(db: Session, test_run_id: int) -> Report | None:
     model_stats = {}
     for mid, sc_list in model_scores.items():
         m = next((x for x in models_tested if x.id == mid), None)
+        avg = round(sum(sc_list) / len(sc_list), 4) if sc_list else 0
+        pr = round(model_passed.get(mid, 0) / len(sc_list) * 100, 1) if sc_list else 0
         model_stats[mid] = {
             "label": m.label if m else mid,
-            "avg_score": round(sum(sc_list) / len(sc_list), 4),
+            "avg_score": avg,
             "pass_count": model_passed.get(mid, 0),
             "total": len(sc_list),
-            "pass_rate": round(model_passed.get(mid, 0) / len(sc_list) * 100, 1) if sc_list else 0,
+            "pass_rate": pr,
+            "weighted_score": round(avg * (pr / 100.0), 4),
         }
 
     best_model_id = max(model_stats, key=lambda k: model_stats[k]["avg_score"]) if model_stats else None

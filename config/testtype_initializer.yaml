@@ -1,0 +1,57 @@
+- id: classification
+  label: Classificazione
+  enabled: true
+  expected_schema: classification_expected
+  expected_json_template: '{"schema":{"label":"string"},"expected":{"label":"..."},"required_fields":["label"],"allowed_labels":["cat1","cat2","cat3"]}'
+- id: data_extraction
+  label: Estrazione dati
+  enabled: true
+  expected_schema: json_expected
+  expected_json_template: '{"schema":{"nome":"string","email":"string","telefono":"string","citta":"string"},"expected":{"nome":"Mario Rossi","email":"m.rossi@email.it","telefono":"333-1234567","citta":"Roma"},"required_fields":["nome","email"]}'
+- id: rag_qa
+  label: RAG / Q&A documentale
+  enabled: true
+  expected_schema: rag_expected
+  expected_json_template: '{"answer_facts":["fatto 1","fatto 2"],"must_cite_context":true,"answer_absent":false}'
+- id: summarization
+  label: Sintesi
+  enabled: true
+  expected_schema: summary_expected
+  expected_json_template: '{"required_points":["punto chiave 1","punto chiave 2"],"forbidden_points":["info non presente"],"max_words":150,"format":"bullet_list"}'
+- id: code_analysis
+  label: Analisi codice
+  enabled: true
+  expected_schema: code_expected
+  expected_json_template: '{"expected_findings":[{"type":"security","severity":"high","description_contains":"SQL injection"},{"type":"best_practice","severity":"medium","description_contains":"query parametrizzata"}],"expected_recommendations":["Usare
+    prepared statement","Validare input"],"language":"it"}'
+- id: code_documentation
+  label: Documentazione codice
+  enabled: true
+  expected_schema: code_doc_expected
+  expected_json_template: '{"must_include":["parametri","valore restituito","eccezioni","esempio"],"style":"docstring_google","language":"it","expected_parameters":[{"name":"email","type":"str"}],"expected_return_type":"bool","expected_exceptions":[{"type":"ValueError","condition":"email
+    vuota"}]}'
+- id: refactoring
+  label: Refactoring
+  enabled: true
+  expected_schema: refactoring_expected
+  expected_json_template: '{"must_preserve_behavior":true,"target":"ridurre duplicazione","constraints":["non cambiare firma","non introdurre dipendenze"],"tests_should_pass":true}'
+- id: image_description
+  label: Descrizione immagine
+  enabled: true
+  expected_schema: vision_expected
+  expected_json_template: '{"required_objects":["bicicletta","casco","strada"],"forbidden_objects":["automobile"],"style":"descrizione_neutra","max_words":120}'
+- id: ocr_extraction
+  label: OCR / estrazione testo da immagine
+  enabled: true
+  expected_schema: ocr_expected
+  expected_json_template: '{"expected_text":"Mario Rossi, nato 15/03/1985 a Milano","expected_fields":{"nome":"Mario Rossi","data":"15/03/1985","luogo":"Milano"},"normalization":{"ignore_case":true,"ignore_extra_spaces":true}}'
+- id: speech_to_text_postprocess
+  label: Post-processing Speech-to-Text
+  enabled: true
+  expected_schema: stt_expected
+  expected_json_template: '{"clean_transcript_contains":["frase chiave 1"],"action_items":[{"owner":"Marco","task":"rollback","deadline":null}]}'
+- id: contextual_insight
+  label: Brainstorming e Conoscenza Contestuale
+  enabled: true
+  expected_schema: insight_expected
+  expected_json_template: '{"expected_insight_count":{"min":3,"max":8},"must_include_themes":["tema 1","tema 2"],"must_avoid_themes":["tema vietato"]}'

@@ -4,7 +4,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import ConfiguredModel, TestCase, TestRun, TestResult, MetricResult
+from ..models import ConfiguredModel, TestCase, TestRun, TestResult, MetricResult, TestType
+from ..schemas import PromptPreviewRequest
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -45,6 +46,78 @@ async def api_test_cases(db: Session = Depends(get_db)):
         }
         for tc in test_cases
     ]
+
+
+@router.post("/preview-prompt")
+async def api_preview_prompt(data: PromptPreviewRequest, db: Session = Depends(get_db)):
+    from ..services.prompt_builder import _build_generated_prompt, validate_prompt
+
+    test_type = db.query(TestType).filter(TestType.id == data.test_type_id).first()
+
+    class _FakeTC:
+        pass
+
+    fake_tc = _FakeTC()
+    fake_tc.test_type_id = data.test_type_id
+    fake_tc.title = data.title
+    fake_tc.description = data.description or None
+    fake_tc.input_text = data.input_text or None
+    fake_tc.context_text = data.context_text or None
+    fake_tc.system_prompt = data.system_prompt or None
+    fake_tc.rules = data.custom_rules or None
+    fake_tc.expected_output_json = data.expected_output_json or None
+    fake_tc.user_prompt_template = None
+
+    prompt = _build_generated_prompt(fake_tc, test_type)
+
+    allowed_source = (data.input_text or "") + "\n" + (data.context_text or "")
+    valid, issues, status = validate_prompt(
+        prompt,
+        data.test_type_id,
+        data.expected_output_json or None,
+        allowed_source_text=allowed_source,
+    )
+
+    prompt_lower = prompt.lower()
+    checks = {
+        "has_json_instruction": "rispondi esclusivamente con un json" in prompt_lower,
+        "has_response_container": '"answer"' in prompt,
+        "no_unreplaced_placeholders": "{input_text}" not in prompt and "{{input_text}}" not in prompt,
+        "no_contamination": not any(i.startswith("contamination") for i in issues),
+        "allowed_labels_present": data.test_type_id != "classification"
+            or "Classi ammesse" in prompt
+            or '"allowed_labels"' in prompt,
+    }
+
+    warnings = []
+    if data.test_type_id == "code_analysis":
+        try:
+            d = json.loads(data.expected_output_json or "{}")
+            if not d.get("code_language"):
+                warnings.append("code_language non impostato — il prompt mostrerà 'Linguaggio: it'")
+        except Exception:
+            pass
+
+    expected_schema_preview = {}
+    if data.expected_output_json:
+        try:
+            d = json.loads(data.expected_output_json)
+            if isinstance(d, dict):
+                expected_schema_preview = d.get("schema", d.get("expected_fields", d.get("expected", {})))
+                if not isinstance(expected_schema_preview, dict):
+                    expected_schema_preview = {}
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "prompt": prompt,
+        "valid": valid,
+        "issues": issues,
+        "warnings": warnings,
+        "checks": checks,
+        "expected_schema_preview": expected_schema_preview,
+        "status": status,
+    })
 
 
 @router.post("/test-cases")

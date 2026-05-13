@@ -10,7 +10,7 @@ from .metrics import check_prompt_contamination
 MESSAGE_CONTAINER_TEMPLATE = """
 Rispondi ESCLUSIVAMENTE con un JSON valido nel seguente formato:
 {
-  "answer": %s,
+  "answer": {answer_format},
   "confidence": 0.0,
   "missing_information": [],
   "assumptions": [],
@@ -21,6 +21,8 @@ Rispondi ESCLUSIVAMENTE con un JSON valido nel seguente formato:
 Il campo "answer" deve contenere SOLO i dati del task, rispettando la struttura indicata.
 Non aggiungere testo prima o dopo il JSON.
 """
+
+ANSWER_FORMAT_DEFAULTS: dict = {}
 
 ST_HEADER = "Sei un modello in fase di benchmark.\n\nTipo test: {test_type}\n\nIstruzioni: {instructions}\n"
 
@@ -34,8 +36,9 @@ def _load_yaml_templates() -> dict:
         for tid, entry in raw.items():
             if isinstance(entry, dict):
                 body = str(entry.get("body", ""))
-                fmt = str(entry.get("answer_format", ""))
-                templates[tid] = ST_HEADER + body + "\n" + MESSAGE_CONTAINER_TEMPLATE % fmt
+                fmt = str(entry.get("answer_format", "{}"))
+                ANSWER_FORMAT_DEFAULTS[tid] = fmt
+                templates[tid] = ST_HEADER + body + "\n" + MESSAGE_CONTAINER_TEMPLATE
         if templates:
             return templates
     except Exception:
@@ -44,6 +47,20 @@ def _load_yaml_templates() -> dict:
 
 
 def _get_hardcoded_templates() -> dict:
+    _fmts = {
+        "classification":              '{ "label": "classe_scelta" }',
+        "data_extraction":             '{ {field_placeholders} }',
+        "rag_qa":                      '{ "answer_text": "risposta basata sul contesto", "citations_used": ["parte del contesto citata..."], "answer_absent": false }',
+        "summarization":               '{ "summary": "testo del riassunto", "key_points": ["punto 1", "punto 2"] }',
+        "code_analysis":               '{ "findings": [{ "type": "bug|security|best_practice|performance", "severity": "low|medium|high|critical", "location": "linea o funzione", "description": "descrizione del problema", "recommendation": "come risolvere" }], "overall_assessment": "valutazione complessiva" }',
+        "code_documentation":          '{ "docstring": "documentazione completa", "parameters": [{ "name": "nome", "type": "tipo", "description": "descrizione" }], "returns": { "type": "tipo", "description": "descrizione" }, "raises": [{ "exception": "NomeEccezione", "condition": "quando viene sollevata" }], "examples": ["esempio duso"] }',
+        "refactoring":                 '{ "refactored_code": "codice rifattorizzato", "changes_summary": ["cambio 1", "cambio 2"], "preserved_behavior": true }',
+        "image_description":           '{ "description": "descrizione oggettiva dellimmagine", "objects_detected": ["oggetto 1", "oggetto 2"], "scene_type": "tipo di scena", "dominant_colors": ["colore 1"] }',
+        "ocr_extraction":              '{ {field_placeholders} }',
+        "speech_to_text_postprocess":  '{ "clean_transcript": "trascrizione pulita", "action_items": [{ "owner": "nome o null", "task": "task da fare", "deadline": "data o null" }], "entities_mentioned": [{ "name": "nome entita", "type": "person|date|project|other" }] }',
+        "contextual_insight":          '{ "insights": ["idea concreta 1", "idea concreta 2"], "references_to_context": ["riferimento al turno X"], "follow_up_questions": ["domanda di approfondimento"], "depth": "dominio_scelto" }',
+    }
+    ANSWER_FORMAT_DEFAULTS.update(_fmts)
     return {
         "classification": ST_HEADER + """Devi classificare il testo nella categoria corretta.
 
@@ -54,7 +71,7 @@ Non aggiungere spiegazioni, restituisci solo la label scelta.
 
 Input da classificare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "label": "classe_scelta" }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "data_extraction": ST_HEADER + """Devi estrarre dati strutturati dal testo.
 
@@ -69,7 +86,7 @@ Regole:
 
 Input da analizzare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ {field_placeholders} }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "rag_qa": ST_HEADER + """Rispondi alla domanda basandoti ESCLUSIVAMENTE sul contesto fornito.
 
@@ -85,7 +102,7 @@ Domanda:
 
 Contesto:
 {context}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "answer_text": "risposta basata sul contesto", "citations_used": ["parte del contesto citata..."], "answer_absent": false }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "summarization": ST_HEADER + """Devi riassumere il testo fornito.
 
@@ -99,23 +116,18 @@ Regole:
 
 Testo da sintetizzare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "summary": "testo del riassunto", "key_points": ["punto 1", "punto 2"] }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "code_analysis": ST_HEADER + """Analizza il codice fornito e identifica problemi, bug o vulnerabilita.
 
 Linguaggio: {language}
 
-Tipo analisi: sicurezza, correttezza, best practice.
+{ca_instructions}
 
-Regole:
-- Non inventare vulnerabilita o bug non presenti.
-- Indica la severita solo se motivata dal codice.
-- Ogni finding deve riferirsi a una riga o costrutto specifico.
-- Severita ammesse: low, medium, high, critical.
-
+{custom_rules}
 Codice da analizzare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "findings": [{ "type": "bug|security|best_practice|performance", "severity": "low|medium|high|critical", "location": "linea o funzione", "description": "descrizione del problema", "recommendation": "come risolvere" }], "overall_assessment": "valutazione complessiva" }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "code_documentation": ST_HEADER + """Scrivi la documentazione per il codice fornito.
 
@@ -129,7 +141,7 @@ Regole:
 
 Codice da documentare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "docstring": "documentazione completa", "parameters": [{ "name": "nome", "type": "tipo", "description": "descrizione" }], "returns": { "type": "tipo", "description": "descrizione" }, "raises": [{ "exception": "NomeEccezione", "condition": "quando viene sollevata" }], "examples": ["esempio duso"] }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "refactoring": ST_HEADER + """Riscrivi il codice applicando refactoring.
 
@@ -145,7 +157,7 @@ Regole:
 
 Codice da rifattorizzare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "refactored_code": "codice rifattorizzato", "changes_summary": ["cambio 1", "cambio 2"], "preserved_behavior": true }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "image_description": ST_HEADER + """Descrivi l'immagine in modo neutro e oggettivo.
 
@@ -158,7 +170,7 @@ Regole:
 - Non interpretare emozioni o intenzioni di persone.
 
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "description": "descrizione oggettiva dellimmagine", "objects_detected": ["oggetto 1", "oggetto 2"], "scene_type": "tipo di scena", "dominant_colors": ["colore 1"] }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "ocr_extraction": ST_HEADER + """Estrai i dati dal documento OCR.
 
@@ -173,24 +185,16 @@ Regole:
 
 Documento da analizzare:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ {field_placeholders} }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "speech_to_text_postprocess": ST_HEADER + """Pulisci e struttura la trascrizione grezza.
 
-Trasformazione richiesta:
-- Rimuovi riempitivi (emh, ehm, ecc).
-- Correggi errori di trascrizione evidenti.
-- Estrai action items, owner e task espliciti.
-- Estrai date e deadline menzionate.
+{stt_instructions}
 
-Regole:
-- Non aggiungere decisioni o task non menzionati.
-- Se un owner non e specificato, usa null.
-- Se una deadline non e specificata, usa null.
-
+{custom_rules}
 Trascrizione grezza:
 {input_text}
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "clean_transcript": "trascrizione pulita", "action_items": [{ "owner": "nome o null", "task": "task da fare", "deadline": "data o null" }], "entities_mentioned": [{ "name": "nome entita", "type": "person|date|project|other" }] }',
+""" + MESSAGE_CONTAINER_TEMPLATE,
 
         "contextual_insight": ST_HEADER + """Analizza la conversazione multi-turno e produci un'analisi strutturata che dimostri comprensione del contesto, capacita di approfondimento e creativita pertinente al dominio.
 
@@ -202,18 +206,10 @@ Contesto aggiuntivo:
 
 Istruzioni: {instructions}
 
-Produci un'analisi con:
-- insights: lista di idee/strategie concrete (minimo 3, massimo 8)
-- references_to_context: riferimenti specifici ai turni della conversazione
-- follow_up_questions: domande di approfondimento pertinenti
-- depth: il dominio di riferimento della tua analisi
+{ci_instructions}
 
-Regole:
-- Ogni insight deve essere concreto e pertinente al dominio.
-- Non proporre idee generiche o ovvie.
-- Fai riferimento esplicito a turni specifici della conversazione.
-- Le domande di approfondimento devono essere rilevanti e non scontate.
-""" + MESSAGE_CONTAINER_TEMPLATE % '{ "insights": ["idea concreta 1", "idea concreta 2"], "references_to_context": ["riferimento al turno X"], "follow_up_questions": ["domanda di approfondimento"], "depth": "dominio_scelto" }',
+{custom_rules}
+""" + MESSAGE_CONTAINER_TEMPLATE,
     }
 
 
@@ -242,10 +238,45 @@ def _build_field_list(expected: dict) -> str:
     return ""
 
 
+_TYPE_HINTS = {
+    "number": "0", "integer": "0", "float": "0.0",
+    "boolean": "false",
+    "date": '"YYYY-MM-DD"',
+    "datetime": '"YYYY-MM-DD HH:MM:SS"',
+    "array": "[]",
+    "object": "{}",
+}
+
+_DEFAULT_CI_INSTRUCTIONS = (
+    "Produci un'analisi con:\n"
+    "- insights: lista di idee/strategie concrete (minimo 3, massimo 8)\n"
+    "- references_to_context: riferimenti specifici ai turni della conversazione\n"
+    "- follow_up_questions: domande di approfondimento pertinenti\n"
+    "- depth: il dominio di riferimento della tua analisi"
+)
+
+_DEFAULT_CA_INSTRUCTIONS = "Tipo analisi: sicurezza, correttezza, best practice."
+
+_DEFAULT_STT_INSTRUCTIONS = (
+    "Trasformazione richiesta:\n"
+    "- Rimuovi riempitivi (emh, ehm, ecc).\n"
+    "- Correggi errori di trascrizione evidenti.\n"
+    "- Estrai action items, owner e task espliciti.\n"
+    "- Estrai date e deadline menzionate."
+)
+
+
 def _build_field_placeholders(expected: dict) -> str:
     fields = expected.get("expected", expected.get("expected_fields", {}))
-    if isinstance(fields, dict):
+    if isinstance(fields, dict) and fields:
         return ', '.join(f'"{k}": "..."' for k in fields.keys())
+    schema = expected.get("schema", {})
+    if isinstance(schema, dict) and schema:
+        parts = []
+        for k, t in schema.items():
+            hint = _TYPE_HINTS.get(str(t).lower(), '"..."')
+            parts.append(f'"{k}": {hint}')
+        return ', '.join(parts)
     return ""
 
 
@@ -284,8 +315,18 @@ def _get_length_constraint(expected: dict) -> str:
     return ""
 
 
+def _format_custom_rules(rules_text) -> str:
+    if not rules_text or not str(rules_text).strip():
+        return ""
+    lines = [l.strip() for l in str(rules_text).strip().split("\n") if l.strip()]
+    items = "\n".join(f"- {l}" if not l.startswith("- ") else l for l in lines)
+    return "Regole:\n" + items
+
+
 def _render_prompt_template(template: str, test_case, test_type, expected: dict) -> str:
+    _tid = (test_type.id if test_type else None) or test_case.test_type_id
     replacements = {
+        "answer_format": expected.get("answer_format", ANSWER_FORMAT_DEFAULTS.get(_tid, "{}")),
         "test_type": test_type.label if test_type else test_case.test_type_id,
         "instructions": test_case.description or (test_type.label if test_type else test_case.test_type_id),
         "input_text": test_case.input_text or "",
@@ -298,12 +339,16 @@ def _render_prompt_template(template: str, test_case, test_type, expected: dict)
         "format_constraint": _get_format_constraint(expected),
         "length_constraint": _get_length_constraint(expected),
         "style": expected.get("style", "descrizione_neutra"),
-        "language": expected.get("language", "it"),
+        "language": expected.get("code_language", expected.get("language", "it")),
         "doc_style": expected.get("style", "docstring_google"),
         "answer_absent_rule": (
             "IMPORTANTE: se la risposta NON e presente nel contesto, imposta "
             "answer_absent a true e lascia answer_text vuoto."
         ) if expected.get("answer_absent") is not None else "",
+        "custom_rules": _format_custom_rules(getattr(test_case, "rules", None)),
+        "ci_instructions": expected.get("ci_instructions", _DEFAULT_CI_INSTRUCTIONS),
+        "ca_instructions": expected.get("ca_instructions", _DEFAULT_CA_INSTRUCTIONS),
+        "stt_instructions": expected.get("stt_instructions", _DEFAULT_STT_INSTRUCTIONS),
     }
     prompt = template
     for key, value in replacements.items():
@@ -343,14 +388,28 @@ def validate_prompt(
         issues.append("missing_response_container")
 
     if test_type_id == "classification":
-        if "Classi ammesse" not in prompt:
+        has_classi_ammesse = "Classi ammesse" in prompt
+        has_allowed_labels_json = bool(re.search(r'"allowed_labels"\s*:\s*\[', prompt, re.IGNORECASE))
+
+        if not has_classi_ammesse and not has_allowed_labels_json:
             issues.append("missing_allowed_labels")
-        else:
+        elif has_classi_ammesse:
             rest = prompt.split("Classi ammesse", 1)[1]
             section = rest.split("\n\n")[0] if "\n\n" in rest else rest
             label_part = section.split(":", 1)[-1] if ":" in section else section
             label_text = label_part.strip("() :\n\r\t")
             if len(label_text) < 3 or "," not in label_text:
+                issues.append("missing_allowed_labels")
+        elif has_allowed_labels_json:
+            try:
+                match = re.search(r'"allowed_labels"\s*:\s*(\[[^\]]*\])', prompt, re.IGNORECASE)
+                if match:
+                    labels = json.loads(match.group(1))
+                    if not isinstance(labels, list) or len(labels) == 0:
+                        issues.append("missing_allowed_labels")
+                else:
+                    issues.append("missing_allowed_labels")
+            except (json.JSONDecodeError, TypeError):
                 issues.append("missing_allowed_labels")
 
     if not prompt.strip():

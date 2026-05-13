@@ -11,6 +11,7 @@ from ..services.test_runner import execute_test_run
 from ..services.report_builder import generate_report, generate_csv
 from ..services.chart_builder import build_run_charts
 from ..services.benchmark_stats import compute_benchmark_stats, build_benchmark_chart_data
+from ..services.config_loader import get_benchmark_defaults, get_weighted_score_threshold
 from ..schemas import TestRunCreate
 
 router = APIRouter(prefix="/test-runs", tags=["test_runs"])
@@ -191,6 +192,7 @@ async def test_run_detail(id: int, request: Request, db: Session = Depends(get_d
             "benchmark_stats": benchmark_stats,
             "benchmark_chart": json.dumps(benchmark_chart) if benchmark_chart else "{}",
             "benchmark_chart_raw": benchmark_chart,
+            "weighted_score_threshold": get_weighted_score_threshold(),
         },
     )
 
@@ -338,6 +340,7 @@ async def test_run_status(id: int, db: Session = Depends(get_db)):
                 pass
 
     resp["chart_data"] = build_run_charts(db, id)
+    resp["weighted_score_threshold"] = get_weighted_score_threshold()
 
     return resp
 

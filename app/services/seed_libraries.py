@@ -1339,3 +1339,40 @@ def migrate_academy_library_to_stem(db):
         tc.enabled = False; tc.tags_json = json.dumps(["academy","deprecated_admin_seed"]); updated += 1
     if updated: db.commit()
     return updated
+
+
+def seed_libraries_from_yaml(db, yaml_path: str = "config/testlibrary_initializer.yaml") -> int:
+    import yaml
+    from pathlib import Path
+    from ..models import TestLibrary
+
+    path = Path(yaml_path)
+    if not path.exists():
+        return -1
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Failed to load {yaml_path}: {e}")
+        return -1
+    if not isinstance(data, list) or len(data) == 0:
+        return -1
+
+    existing_ids = {row[0] for row in db.query(TestLibrary.id).all()}
+    added = 0
+    for lib_data in data:
+        if lib_data.get("id") in existing_ids:
+            continue
+        lib = TestLibrary(
+            id=lib_data["id"],
+            label=lib_data.get("label", lib_data["id"]),
+            description=lib_data.get("description"),
+            domain=lib_data.get("domain"),
+            tags_json=lib_data.get("tags_json"),
+            enabled=lib_data.get("enabled", True),
+        )
+        db.add(lib)
+        added += 1
+
+    if added > 0:
+        db.commit()
+    return added

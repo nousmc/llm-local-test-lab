@@ -1056,7 +1056,7 @@ def check_prompt_contamination(prompt: str, expected_output_json: str | None, al
         exp_data = expected.get("expected", expected)
         if isinstance(exp_data, dict):
             for key, val in exp_data.items():
-                if key in {"style", "language", "format", "max_words", "target", "constraints", "tests_should_pass", "must_preserve_behavior", "depth", "domain", "must_include_themes", "must_avoid_themes", "expected_insight_count", "quality_criteria"}:
+                if key in {"style", "language", "code_language", "format", "max_words", "target", "constraints", "tests_should_pass", "must_preserve_behavior", "depth", "domain", "must_include_themes", "must_avoid_themes", "expected_insight_count", "quality_criteria", "ci_instructions", "ca_instructions", "stt_instructions", "answer_format"}:
                     continue
                 if key == "label" and _is_allowed_class_value(prompt, expected, val):
                     continue
@@ -1092,10 +1092,26 @@ def _is_allowed_class_value(prompt: str, expected: dict, value) -> bool:
 
     lower_prompt = prompt.lower()
     lower_value = value.lower()
+
     if "classi ammesse" in lower_prompt:
         # The allowed-class section is part of the task specification, not a leaked answer.
         section = lower_prompt.split("classi ammesse", 1)[1].split("input da classificare", 1)[0]
         return lower_value in section
+
+    # Recognize {"allowed_labels": [...]} JSON embedded in the prompt as valid
+    # alternative to "Classi ammesse" for classification task specification.
+    allowed_json_match = re.search(
+        r'"allowed_labels"\s*:\s*(\[[^\]]*\])',
+        lower_prompt,
+        re.IGNORECASE,
+    )
+    if allowed_json_match:
+        try:
+            json_labels = json.loads(allowed_json_match.group(1))
+            if isinstance(json_labels, list):
+                return lower_value in [str(l).lower() for l in json_labels]
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     return False
 

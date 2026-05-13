@@ -11,17 +11,83 @@
     <form method="post" action="/libraries/" class="form-inline">
         <h3>Nuova Libreria</h3>
         <div class="form-row">
-            <div class="form-group"><label>ID *</label><input type="text" name="id" required></div>
-            <div class="form-group"><label>Label *</label><input type="text" name="label" required></div>
+            <div class="form-group">
+                <label>ID *</label>
+                <input type="text" name="id" required>
+                <div class="field-help">Identificativo univoco (es. <code>legal</code>, <code>medical</code>). Usato per associare i test case. Non modificabile dopo la creazione.</div>
+            </div>
+            <div class="form-group">
+                <label>Label *</label>
+                <input type="text" name="label" required>
+                <div class="field-help">Nome visualizzato (es. "Documenti Legali").</div>
+            </div>
         </div>
-        <div class="form-group"><label>Descrizione</label><input type="text" name="description"></div>
+        <div class="form-group">
+            <label>Descrizione</label>
+            <input type="text" name="description">
+            <div class="field-help">Testo descrittivo della libreria. Visibile nella dashboard e nei report.</div>
+        </div>
         <div class="form-row">
-            <div class="form-group"><label>Dominio</label><input type="text" name="domain"></div>
-            <div class="form-group"><label>Tag (separati da virgola)</label><input type="text" name="tags"></div>
-            <div class="form-group"><label>Abilitato</label><select name="enabled"><option value="true">Si</option><option value="false">No</option></select></div>
+            <div class="form-group">
+                <label>Dominio</label>
+                <input type="text" name="domain">
+                <div class="field-help">Ambito applicativo (es. <code>sanita</code>, <code>finanza</code>). Raggruppa librerie affini.</div>
+            </div>
+            <div class="form-group">
+                <label>Tag (separati da virgola)</label>
+                <input type="text" name="tags">
+                <div class="field-help">Parole chiave (es. <code>contratti,normativa,GDPR</code>). Usati per filtro e categorizzazione.</div>
+            </div>
+            <div class="form-group">
+                <label>Abilitato</label>
+                <select name="enabled"><option value="true">Si</option><option value="false">No</option></select>
+                <div class="field-help">Se <b>Si</b>, i test case della libreria vengono eseguiti. Se <b>No</b>, saltati.</div>
+            </div>
         </div>
         <button type="submit" class="btn">Crea</button>
         <button type="button" class="btn btn-small" onclick="document.getElementById('add-lib-form').style.display='none'" style="background:#888">Annulla</button>
+    </form>
+</div>
+
+<div id="edit-lib-form" class="modal-form" style="display:none">
+    <form method="post" id="edit-lib-f" class="form-inline">
+        <h3>Modifica Libreria</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>ID</label>
+                <input type="text" id="el-id" readonly style="background:#eee">
+                <div class="field-help">L'ID non puo' essere modificato.</div>
+            </div>
+            <div class="form-group">
+                <label>Label *</label>
+                <input type="text" id="el-label" name="label" required>
+                <div class="field-help">Nome visualizzato. La modifica non altera i test case associati.</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Descrizione</label>
+            <input type="text" id="el-desc" name="description">
+            <div class="field-help">Testo descrittivo. Visibile nella dashboard e nei report.</div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Dominio</label>
+                <input type="text" id="el-domain" name="domain">
+                <div class="field-help">Ambito applicativo (es. <code>sanita</code>). Raggruppa librerie affini.</div>
+            </div>
+            <div class="form-group">
+                <label>Tag (separati da virgola)</label>
+                <input type="text" id="el-tags" name="tags">
+                <div class="field-help">Parole chiave separate da virgola. Usati per filtro.</div>
+            </div>
+            <div class="form-group">
+                <label>Abilitato</label>
+                <select id="el-enabled" name="enabled"><option value="true">Si</option><option value="false">No</option></select>
+                <div class="field-help">Disabilitare esclude tutti i test case della libreria dalle esecuzioni.</div>
+            </div>
+        </div>
+        <button type="submit" class="btn">Aggiorna</button>
+        <button type="button" class="btn btn-small" onclick="document.getElementById('edit-lib-form').style.display='none'" style="background:#888">Annulla</button>
     </form>
 </div>
 
@@ -49,6 +115,7 @@
             <td>{{ item.tc_count }}</td>
             <td>{% for tt, cnt in item.type_counts.items() %}{{ tt }}:{{ cnt }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
             <td class="actions">
+                <button class="btn-small" onclick="editLib('{{ item.lib.id | e }}','{{ item.lib.label | e }}','{{ item.lib.description or '' | e }}','{{ item.lib.domain or '' | e }}','{{ item.lib.tags_json or '' | e }}','{{ 'true' if item.lib.enabled else 'false' }}')">Modifica</button>
                 <a href="/test-cases?library={{ item.lib.id }}" class="btn-small">Test</a>
                 <form method="post" action="/libraries/{{ item.lib.id }}/toggle" style="display:inline">
                     <button type="submit" class="btn-small">{{ 'Disabilita' if item.lib.enabled else 'Abilita' }}</button>
@@ -63,4 +130,23 @@
         {% endfor %}
     </tbody>
 </table>
+
+<style>
+.field-help { font-size: 11px; color: #666; margin-top: 3px; line-height: 1.4; }
+.field-help code { background: #e8e8e8; padding: 0 3px; border-radius: 2px; font-size: 10px; }
+</style>
+
+<script>
+function editLib(id, label, desc, domain, tags, enabled) {
+    document.getElementById('edit-lib-form').style.display = 'block';
+    document.getElementById('el-id').value = id;
+    document.getElementById('el-label').value = label;
+    document.getElementById('el-desc').value = desc;
+    document.getElementById('el-domain').value = domain;
+    document.getElementById('el-tags').value = tags;
+    document.getElementById('el-enabled').value = enabled;
+    document.getElementById('edit-lib-f').action = '/libraries/' + id + '/update';
+    document.getElementById('edit-lib-form').scrollIntoView({behavior:'smooth'});
+}
+</script>
 {% endblock %}

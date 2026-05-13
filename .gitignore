@@ -1,6 +1,7 @@
 secrets/secret.key
 secrets/openrouter.txt
 secrets/*.Identifier
+tests/*
 data/app.db
 data/reports/*
 data/exports/*
