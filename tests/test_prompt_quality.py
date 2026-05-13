@@ -14,11 +14,12 @@ from app.services.prompt_builder import (
 from app.models import TestCase, TestType
 
 
-def _make_tc(test_type_id, input_text, expected=None, description="", context=""):
+def _make_tc(test_type_id, input_text, expected=None, description="", context="", rules=None):
     return TestCase(
         test_type_id=test_type_id, title="Test", input_text=input_text,
         description=description, context_text=context,
         expected_output_json=json.dumps(expected) if expected else None,
+        rules=rules,
     )
 
 
@@ -26,9 +27,9 @@ def _make_tt(test_type_id, label=""):
     return TestType(id=test_type_id, label=label or test_type_id.replace("_", " ").title())
 
 
-def _build(test_type_id, input_text, expected=None, description="", context=""):
+def _build(test_type_id, input_text, expected=None, description="", context="", rules=None):
     from app.services.test_runner import _build_prompt
-    tc = _make_tc(test_type_id, input_text, expected, description, context)
+    tc = _make_tc(test_type_id, input_text, expected, description, context, rules=rules)
     tt = _make_tt(test_type_id)
     return _build_prompt(tc, tt)
 
@@ -93,7 +94,8 @@ def test_data_extraction_has_field_list():
     expected = {"schema": {"invoice_number": "string", "date": "date", "total": "number"},
                 "expected": {"invoice_number": "42", "date": "2026-04-15", "total": 1280.40},
                 "required_fields": ["invoice_number", "total"]}
-    prompt = _build("data_extraction", "Fattura 42 del 15/04/2026: 1280.40 EUR", expected)
+    rules = "Se un dato non e presente o non e leggibile, usa null per quel campo."
+    prompt = _build("data_extraction", "Fattura 42 del 15/04/2026: 1280.40 EUR", expected, rules=rules)
     assert "invoice_number" in prompt, "Must list field names"
     assert "total" in prompt
     assert "date" in prompt
@@ -209,7 +211,8 @@ def test_image_description_explicit_structure():
 
 
 def test_image_description_no_hallucination_rule():
-    prompt = _build("image_description", "[Immagine: ufficio]")
+    rules = "Descrivi solo oggetti visibili nell'immagine.\nNon indicare oggetti assenti o solo probabili."
+    prompt = _build("image_description", "[Immagine: ufficio]", rules=rules)
     assert "assenti" in prompt.lower() or "visibili" in prompt.lower() or "non presenti" in prompt.lower()
 
 
@@ -218,7 +221,8 @@ def test_image_description_no_hallucination_rule():
 # ============================================================
 def test_ocr_explicit_structure():
     expected = {"expected_fields": {"name": "Mario", "date": "2026-04-15"}}
-    prompt = _build("ocr_extraction", "Cognome: Rossi. Nome: Mario. Data: 15/04/2026", expected)
+    rules = "Se un campo non e leggibile o assente, usa null."
+    prompt = _build("ocr_extraction", "Cognome: Rossi. Nome: Mario. Data: 15/04/2026", expected, rules=rules)
     assert '"name"' in prompt
     assert '"date"' in prompt
     assert "null" in prompt.lower(), "Must mention null for unreadable fields"
