@@ -274,12 +274,14 @@ async def test_run_rerun_all(id: int, db: Session = Depends(get_db)):
     if not run or run.status == "running":
         return RedirectResponse(url=f"/test-runs/{id}", status_code=303)
 
-    # Reset completo: elimina metriche/validazioni, ripristina tutti i risultati a pending
+    # Reset completo: elimina tutto come un primo avvio
     all_results = db.query(TestResult).filter(TestResult.test_run_id == id).all()
     result_ids = [r.id for r in all_results]
     if result_ids:
         db.query(MetricResult).filter(MetricResult.test_result_id.in_(result_ids)).delete(synchronize_session=False)
         db.query(ValidationResult).filter(ValidationResult.test_result_id.in_(result_ids)).delete(synchronize_session=False)
+    from ..models import Report
+    db.query(Report).filter(Report.test_run_id == id).delete(synchronize_session=False)
     for r in all_results:
         r.status = "pending"
         r.error_message = None
@@ -292,6 +294,7 @@ async def test_run_rerun_all(id: int, db: Session = Depends(get_db)):
         r.completion_tokens = None
         r.total_tokens = None
         r.tokens_per_second = None
+        r.estimated_cost = None
         r.started_at = None
         r.completed_at = None
 
@@ -320,6 +323,12 @@ async def test_run_rerun_failed(id: int, db: Session = Depends(get_db)):
         TestResult.status.in_(["failed", "timeout"]),
     ).all()
 
+    # Elimina metric_results e validation_results dei test falliti
+    failed_ids = [r.id for r in failed_results]
+    if failed_ids:
+        db.query(MetricResult).filter(MetricResult.test_result_id.in_(failed_ids)).delete(synchronize_session=False)
+        db.query(ValidationResult).filter(ValidationResult.test_result_id.in_(failed_ids)).delete(synchronize_session=False)
+
     for fr in failed_results:
         fr.status = "pending"
         fr.error_message = None
@@ -328,6 +337,10 @@ async def test_run_rerun_failed(id: int, db: Session = Depends(get_db)):
         fr.response_json = None
         fr.raw_response_json = None
         fr.latency_ms = None
+        fr.prompt_tokens = None
+        fr.completion_tokens = None
+        fr.total_tokens = None
+        fr.tokens_per_second = None
         fr.started_at = None
         fr.completed_at = None
 
